@@ -2,7 +2,7 @@
 
 Contexto y reglas para trabajar en este proyecto con agentes (Claude, etc.).
 
-## ⛔ Reglas obligatorias (Git)
+## Reglas obligatorias (Git)
 
 - **NUNCA hacer push directo a `main`.** La rama `main` está protegida por convención.
 - **Todo cambio entra por Pull Request.** Flujo:
@@ -14,7 +14,7 @@ Contexto y reglas para trabajar en este proyecto con agentes (Claude, etc.).
 - No usar `git push --force` sobre `main`.
 - No commitear secretos ni datos de infraestructura (ver más abajo).
 
-## 📚 Documentación del proyecto
+## Documentación del proyecto
 
 La documentación vive en [`docs/`](docs/). Consultarla y mantenerla actualizada:
 
@@ -102,8 +102,10 @@ ssh <user@host> "sudo journalctl -u actas-server -n 50 --no-pager"
 
 ## Convenciones
 
-- **Git/PR**: ver "⛔ Reglas obligatorias (Git)" arriba. Trabajar siempre en una rama y
+- **Git/PR**: ver "Reglas obligatorias (Git)" arriba. Trabajar siempre en una rama y
   abrir PR; nunca push directo a `main`.
+- **Sin emojis**: no usar emojis en código, documentación, commits, comentarios ni en
+  ningún archivo del proyecto.
 - **Commits**: Conventional Commits con scope (`feat(estela): ...`, `fix(actas): ...`),
   en español, descriptivos.
 - **TDD en el server**: test → ver fallar → implementar → ver pasar. Tests en

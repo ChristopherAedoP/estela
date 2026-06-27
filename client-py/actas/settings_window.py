@@ -173,7 +173,7 @@ class SettingsWindow(QDialog):
     def _test_server(self):
         self.cfg.server_url = self.server_edit.text().strip()
         if infra.server_healthy(self.cfg):
-            self.status_lbl.setText("Servidor OK ✓")
+            self.status_lbl.setText("Servidor OK")
         else:
             self.status_lbl.setText("El servidor no responde (¿VM apagada?).")
 
