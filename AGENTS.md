@@ -2,6 +2,32 @@
 
 Contexto y reglas para trabajar en este proyecto con agentes (Claude, etc.).
 
+## Reglas obligatorias (Git)
+
+- **NUNCA hacer push directo a `main`.** La rama `main` está protegida por convención.
+- **Todo cambio entra por Pull Request.** Flujo:
+  1. Crear una rama desde `main`: `git switch -c feat/<descripcion>` (o `fix/...`, `docs/...`, `chore/...`).
+  2. Commitear en esa rama (Conventional Commits, en español).
+  3. Push de la rama: `git push -u origin <rama>`.
+  4. Abrir PR: `gh pr create --base main --fill` (revisar `gh pr view` antes).
+  5. El merge a `main` se hace vía PR (revisado), nunca con push local a `main`.
+- No usar `git push --force` sobre `main`.
+- No commitear secretos ni datos de infraestructura (ver más abajo).
+
+## Documentación del proyecto
+
+La documentación vive en [`docs/`](docs/). Consultarla y mantenerla actualizada:
+
+- [`docs/architecture.md`](docs/architecture.md) — Arquitectura con diagramas C4 (Mermaid) + flujo.
+- [`docs/server.md`](docs/server.md) — Servidor: pipeline, modelos, VRAM, deploy, tests.
+- [`docs/client.md`](docs/client.md) — Cliente: app de bandeja, OBS, ganancia, cola.
+- [`docs/troubleshooting.md`](docs/troubleshooting.md) — Problemas conocidos y sus soluciones.
+- [`docs/decisions.md`](docs/decisions.md) — Decisiones técnicas (ADRs).
+
+Además: `README.md` (portada) y `CHANGELOG.md` (historial). Si un cambio afecta a la
+arquitectura, el comportamiento o la operación, **actualizar la doc correspondiente en el
+mismo PR**.
+
 ## Qué es Estela
 
 Herramienta de **grabación y transcripción de reuniones con IA local**. Cliente de
@@ -76,6 +102,10 @@ ssh <user@host> "sudo journalctl -u actas-server -n 50 --no-pager"
 
 ## Convenciones
 
+- **Git/PR**: ver "Reglas obligatorias (Git)" arriba. Trabajar siempre en una rama y
+  abrir PR; nunca push directo a `main`.
+- **Sin emojis**: no usar emojis en código, documentación, commits, comentarios ni en
+  ningún archivo del proyecto.
 - **Commits**: Conventional Commits con scope (`feat(estela): ...`, `fix(actas): ...`),
   en español, descriptivos.
 - **TDD en el server**: test → ver fallar → implementar → ver pasar. Tests en
