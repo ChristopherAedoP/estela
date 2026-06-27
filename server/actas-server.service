@@ -1,0 +1,20 @@
+[Unit]
+Description=Actas transcription server
+After=network-online.target ollama.service mnt-actas.automount
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ia
+Group=ia
+WorkingDirectory=/opt/actas-server
+Environment=ACTAS_AUDIO_DIR=/mnt/actas/audio
+Environment=ACTAS_OLLAMA_URL=http://127.0.0.1:11434
+Environment=LD_LIBRARY_PATH=/opt/actas-server/.venv/lib/python3.13/site-packages/nvidia/cublas/lib:/opt/actas-server/.venv/lib/python3.13/site-packages/nvidia/cudnn/lib
+EnvironmentFile=-/etc/actas-server.env
+ExecStart=/opt/actas-server/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8770
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,23 @@
+# Python
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/.pytest_cache/
+
+# Secretos / config local (no versionar)
+**/*.env
+**/.env
+client-py/device.txt
+client-py/config.json
+deploy.local.ps1
+
+# PyInstaller (cliente)
+client-py/build/
+client-py/dist/
+client-py/*.spec
+
+# Datos de la app / grabaciones
+*.wav
+*.mka
+**/*.lock
+**/session.wav
