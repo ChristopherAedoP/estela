@@ -39,8 +39,21 @@ class Config:
     configuración real (servidor, vault, OBS, etc.) la introduce el usuario desde
     la ventana de Ajustes; se persiste en `config.json` del directorio de datos.
     """
-    # Servidor de transcripción (FastAPI). Configurar en Ajustes.
+    # Servidor de transcripción primario (FastAPI). Configurar en Ajustes.
+    # Cascada de resolución: primario -> (encender VM) -> local -> (arrancar local).
     server_url: str = "http://localhost:8770"
+    # Servidor local de respaldo. Si el primario no responde, se usa este.
+    local_server_url: str = "http://localhost:8770"
+    # Arrancar el servidor local (Ollama + actas-server) automáticamente cuando el
+    # primario no responde y el local tampoco está corriendo.
+    auto_start_local: bool = False
+    # Rutas para arrancar el servidor local (solo se usan si auto_start_local=True).
+    # Directorio del server (contiene .venv, .env y el paquete app).
+    local_server_dir: str = ""
+    # Python del venv del server local (por defecto: <local_server_dir>/.venv).
+    local_server_python: str = ""
+    # URL de Ollama local (se arranca si no responde antes del server local).
+    local_ollama_url: str = "http://127.0.0.1:11434"
     # Vault Obsidian (destino de las notas). Vacío => configurar en Ajustes.
     vault_path: str = ""
     # Carpeta donde guardar las actas. Si es relativa, se resuelve dentro del vault.

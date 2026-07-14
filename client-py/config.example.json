@@ -5,6 +5,12 @@
   "vault_path": "<ruta-a-tu-vault-obsidian>",
   "actas_dir": "Actas",
 
+  "local_server_url": "http://localhost:8770",
+  "auto_start_local": false,
+  "local_server_dir": "<carpeta-del-server-local-con-venv-y-env-o-vacio>",
+  "local_server_python": "",
+  "local_ollama_url": "http://127.0.0.1:11434",
+
   "proxmox_host": "<host-proxmox-o-vacio>",
   "vm_id": "<id-de-la-vm-o-vacio>",
   "auto_start_vm": false,
