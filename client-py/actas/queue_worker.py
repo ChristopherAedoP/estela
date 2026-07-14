@@ -140,7 +140,11 @@ class ProcessingQueue(QObject):
                     now = time.time()
                     if now - last_retry >= self.RETRY_INTERVAL and self._has_failed():
                         last_retry = now
-                        if infra.server_healthy(self.cfg):
+                        # Chequeo pasivo: reintentar si el primario o el local ya
+                        # responden (sin arrancar servicios; eso lo hace el proceso
+                        # del job vía resolve_server).
+                        if (infra.url_healthy(self.cfg.server_url)
+                                or infra.url_healthy(self.cfg.local_server_url)):
                             log.info("reintentando fallidos automáticamente")
                             self.retry_failed()
                             continue
