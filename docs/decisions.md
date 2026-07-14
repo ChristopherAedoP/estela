@@ -70,3 +70,21 @@ código sin exponer hosts, rutas ni credenciales, y desplegar en distintos entor
 **Razón:** renombrar todo lo interno (servicio systemd, paquete, paths) rompería despliegues
 y configuración existentes sin beneficio funcional. El nombre visible es lo que importa para
 el usuario.
+
+## 9. Fallback de servidor: NAS primario, local de respaldo
+
+**Decisión:** el cliente resuelve el servidor a usar en cada trabajo con una cascada
+(`infra.resolve_server`): 1) servidor primario (`server_url`) si responde; 2) si
+`auto_start_vm`, encender la VM y esperar; 3) servidor local (`local_server_url`) si
+responde; 4) si `auto_start_local`, arrancar Ollama + actas-server local y usarlo. El primer
+servidor disponible procesa el trabajo (`recorder` guarda la URL efectiva y `_upload` la usa).
+
+**Razón:** el servidor primario (VM con GPU en el NAS) no siempre está encendido. Con la
+cascada, la grabación se procesa contra el NAS cuando está disponible y contra el PC local
+cuando no, sin intervención ni cambio de configuración. El PC local tiene GPU suficiente
+(16 GB VRAM) para el pipeline completo.
+
+**Limitación conocida:** `start_local_server` lanza el uvicorn del server local como proceso
+hijo del cliente; si el cliente termina justo tras arrancarlo, el server local también
+termina. En uso normal la app de bandeja vive mientras se procesa la cola. Mejora futura:
+lanzar el server local desacoplado del proceso padre.
