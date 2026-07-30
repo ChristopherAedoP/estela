@@ -1,5 +1,7 @@
 # Estela
 
+[![CI](https://github.com/ChristopherAedoP/estela/actions/workflows/ci.yml/badge.svg)](https://github.com/ChristopherAedoP/estela/actions/workflows/ci.yml)
+
 > Graba lo que se dice, déjalo grabado en piedra.
 
 **Estela** es una herramienta personal de **grabación y transcripción de reuniones con
@@ -16,10 +18,30 @@ Sin nube. Sin enviar tu audio a terceros. Todo corre en tu propia infraestructur
 2. **Captura** el audio de la salida que elijas (vía OBS, sin cables virtuales).
 3. **Transcribe** en español (faster-whisper large-v3).
 4. **Identifica hablantes** (pyannote) → `[Hablante 1]`, `[Hablante 2]`…
+   Requiere un token de Hugging Face y aceptar la licencia del modelo. Sin él, el resto
+   del pipeline funciona igual, solo que sin separar hablantes.
 5. **Resume** con un LLM local (gemma4:12b) → resumen, puntos clave, decisiones y tareas.
 6. **Guarda** la nota en tu vault Obsidian y archiva el audio en el servidor.
 
 Todo en **background**: grabas una reunión, se encola, y puedes grabar otra al instante.
+
+## Qué plataformas soporta
+
+Cliente y servidor son piezas separadas y no tienen el mismo soporte:
+
+| | Windows | Linux | macOS |
+|---|---|---|---|
+| **Servidor** (transcribe) | Sí | Sí | No |
+| **Cliente** (graba) | Sí | Parcial | Parcial |
+
+**Grabar solo está resuelto en Windows.** La escena de OBS usa `wasapi_output_capture`,
+que no existe fuera de Windows, y el atajo global tampoco está implementado en otras
+plataformas. Desde Linux o macOS puedes usar el servidor, y grabar requiere adaptar la
+escena de OBS a mano.
+
+En macOS el servidor no es viable: las librerías de CUDA no publican versión para ese
+sistema y el motor de transcripción no tiene aceleración por Metal. Lo práctico ahí es
+apuntar a un servidor remoto.
 
 ## Arquitectura (resumen)
 
@@ -32,7 +54,7 @@ flowchart LR
     SRV --> P[pyannote]
     SRV --> L[Ollama gemma4]
     APP -->|escribe| V[(Vault Obsidian)]
-    SRV -->|archiva| N[(Almacenamiento NFS)]
+    SRV -->|archiva| N[(Almacenamiento del servidor)]
 ```
 
 Detalle completo y diagramas C4 en [`docs/architecture.md`](docs/architecture.md).
@@ -43,7 +65,7 @@ Detalle completo y diagramas C4 en [`docs/architecture.md`](docs/architecture.md
 |-------|-----------|-----------|
 | **Cliente** | Python 3 + PySide6 (app de bandeja) | [`client-py/`](client-py/) → `Estela.exe` |
 | **Servidor** | FastAPI + faster-whisper + pyannote + Ollama | [`server/`](server/) — en el mismo PC o en una máquina con GPU |
-| **Despliegue** | `deploy.ps1` (scp a un servidor remoto) | raíz |
+| **Despliegue** | Docker, o `deploy.ps1` para sincronizar código a un servidor ya provisionado | raíz |
 
 > Nota: el identificador técnico interno del servicio sigue siendo `actas`
 > (`actas-server`, paquete `actas`, variables `ACTAS_*`). "Estela" es el nombre del
@@ -51,11 +73,12 @@ Detalle completo y diagramas C4 en [`docs/architecture.md`](docs/architecture.md
 
 ## Requisitos
 
-- **GPU NVIDIA con CUDA 12.x.** El servidor viene configurado para `cuda`; en CPU funciona
-  pero la transcripción se vuelve muy lenta.
-- **Python 3.12**, [Ollama](https://ollama.com/download) y, en la máquina donde grabes,
-  [OBS Studio](https://obsproject.com/).
-- Unos 15 GB de disco para los modelos.
+- **GPU NVIDIA con CUDA 12.x** en la práctica. El servidor detecta el dispositivo: usa la
+  GPU si la encuentra y cae a CPU si no. En CPU funciona, pero con `large-v3` una reunión
+  larga tarda demasiado para ser útil.
+- **Python 3.10 a 3.13**, [Ollama](https://ollama.com/download) y, en la máquina donde
+  grabes, [OBS Studio](https://obsproject.com/).
+- Alrededor de 15 GB de disco para los modelos, según el modelo que elijas.
 
 Puedes correrlo **todo en un PC** o separar el cliente del servidor en dos máquinas.
 
@@ -66,7 +89,12 @@ Puedes correrlo **todo en un PC** o separar el cliente del servidor en dos máqu
 ```bash
 docker compose up                 # servidor + Ollama
 docker compose exec ollama ollama pull gemma4:12b-it-qat
+curl "http://localhost:8770/health?deep=1"   # debe decir device: cuda
 ```
+
+Comprueba ese último paso: si el contenedor no ve la GPU, el servidor **cae a CPU sin
+avisar** y solo lo notarás por la lentitud. Ver
+[`docs/troubleshooting.md`](docs/troubleshooting.md#el-contenedor-no-ve-la-gpu).
 
 **Servidor sin Docker:**
 
@@ -109,7 +137,7 @@ sigue **[`docs/getting-started.md`](docs/getting-started.md)**.
 ## Stack
 
 Python · PySide6 · OBS Studio (obs-websocket) · FastAPI · faster-whisper (large-v3) ·
-pyannote.audio · Ollama (gemma4:12b) · CUDA 12.x · Obsidian
+pyannote.audio · Ollama (gemma4:12b) · CUDA 12.x · Docker · Obsidian
 
 ## Estado
 
