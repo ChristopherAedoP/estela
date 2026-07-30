@@ -21,32 +21,35 @@ se gestiona a mano en la máquina destino.
 | Variable | Default | Descripción |
 |---|---|---|
 | `ACTAS_WHISPER_MODEL` | `large-v3` | Modelo de faster-whisper |
-| `ACTAS_WHISPER_DEVICE` | `cuda` | `cuda` o `cpu` |
-| `ACTAS_WHISPER_COMPUTE` | `float16` | Precisión. En CPU usa `int8` |
+| `ACTAS_WHISPER_DEVICE` | `auto` | `auto`, `cuda` o `cpu`. `auto` usa CUDA si hay GPU |
+| `ACTAS_WHISPER_COMPUTE` | `auto` | `auto` resuelve a `float16` en GPU y a `int8` en CPU |
 | `ACTAS_LANGUAGE` | `es` | Idioma de la transcripción |
 | `ACTAS_OLLAMA_MODEL` | `gemma4:12b-it-qat` | LLM del resumen. Debe estar descargado en Ollama |
 | `ACTAS_OLLAMA_URL` | `http://127.0.0.1:11434` | URL de Ollama |
 | `ACTAS_HF_TOKEN` | (vacío) | Token de Hugging Face para pyannote. Vacío = sin diarización |
-| `ACTAS_AUDIO_DIR` | `/mnt/actas/audio` | Dónde se archiva el audio original |
-| `ACTAS_TMP_DIR` | `/tmp/actas` | Temporales del pipeline |
+| `ACTAS_AUDIO_DIR` | directorio de datos del usuario | Dónde se archiva el audio original |
+| `ACTAS_TMP_DIR` | temporal del sistema | Temporales del pipeline |
 | `ACTAS_MIN_SPEAKERS` | (vacío) | Mínimo de hablantes para la diarización |
 | `ACTAS_MAX_SPEAKERS` | (vacío) | Máximo de hablantes. Útil si pyannote sobreestima |
 
 Notas importantes:
 
-- **Los defaults de rutas son de Linux.** En Windows hay que cambiar `ACTAS_AUDIO_DIR` y
-  `ACTAS_TMP_DIR` sí o sí.
+- **Las rutas por defecto se resuelven por plataforma**: en Windows bajo
+  `%LOCALAPPDATA%\estela`, en Linux bajo `$XDG_DATA_HOME` o `~/.local/share/estela`, y los
+  temporales en el directorio temporal del sistema. No hace falta tocarlas para arrancar.
+  Si quieres archivar el audio en otro sitio (un NAS, por ejemplo), fija `ACTAS_AUDIO_DIR`.
 - **El servidor no carga el `.env` automáticamente.** En producción las variables las
   inyecta systemd; al arrancarlo a mano hay que exportarlas antes (ver
   [getting-started.md](getting-started.md#paso-4--arrancar-el-servidor-y-comprobarlo)).
 - Sin `ACTAS_HF_TOKEN` el pipeline **no falla**: transcribe y resume, pero no separa
   hablantes.
 
-### Variable adicional recomendada
+### Límite de hilos de las librerías de álgebra
 
-`OPENBLAS_NUM_THREADS` no la lee Estela, pero afecta a `torch`. En equipos con muchos
-núcleos, OpenBLAS puede abortar el proceso al reservar sus buffers por hilo. Fijarla en un
-valor moderado (`8` o menos) evita el problema. Ver
+El servidor fija `OPENBLAS_NUM_THREADS`, `OMP_NUM_THREADS` y `MKL_NUM_THREADS` al arrancar
+si no están definidas, con un tope de 8 hilos. Sin ese tope, en equipos con muchos núcleos
+o con la memoria comprometida, la reserva de buffers por hilo falla y tumba el proceso.
+Puedes fijarlas tú para sobreescribir el valor. Ver
 [troubleshooting.md](troubleshooting.md#el-servidor-arranca-pero-transcribe-devuelve-500).
 
 ## Cliente: `config.json`

@@ -92,14 +92,16 @@ Copia el ejemplo y edítalo. El `.env` real no se versiona:
 copy .env.example .env
 ```
 
-Lo mínimo que debes revisar en un PC Windows, porque los valores por defecto son rutas de
-Linux:
+Para arrancar no hace falta cambiar nada: las rutas de audio y temporales se resuelven
+solas según la plataforma, y el dispositivo de inferencia se detecta (CUDA si hay GPU, CPU
+si no). Lo único que conviene revisar es el modelo del resumen:
 
 ```ini
-ACTAS_AUDIO_DIR=C:/Users/<tu-usuario>/AppData/Local/Estela/audio
-ACTAS_TMP_DIR=C:/Users/<tu-usuario>/AppData/Local/Estela/tmp
 ACTAS_OLLAMA_MODEL=gemma4:12b-it-qat
 ```
+
+Si quieres archivar el audio en otro sitio, por ejemplo un disco de red, fija
+`ACTAS_AUDIO_DIR`.
 
 Sobre la **diarización** (quién dice cada cosa): usa `pyannote/speaker-diarization-3.1`, un
 modelo con licencia restringida en Hugging Face. Para activarla necesitas aceptar las
@@ -120,7 +122,6 @@ Get-Content .env | Where-Object { $_ -match '^\s*ACTAS_' } | ForEach-Object {
     $k,$v = $_ -split '=',2
     [System.Environment]::SetEnvironmentVariable($k.Trim(), $v.Trim(), 'Process')
 }
-$env:OPENBLAS_NUM_THREADS = "8"
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8770
 ```
 
@@ -207,8 +208,8 @@ Los pasos 1 a 4 se ejecutan en el servidor Linux con GPU en lugar de en el PC, a
 los comandos (`.venv/bin/pip` en vez de `.\.venv\Scripts\pip`, `cp` en vez de `copy`).
 Diferencias importantes:
 
-- Los valores por defecto de `ACTAS_AUDIO_DIR` (`/mnt/actas/audio`) y `ACTAS_TMP_DIR`
-  (`/tmp/actas`) ya son rutas Linux válidas, así que no hay que cambiarlas.
+- Las rutas por defecto se resuelven igual de bien en Linux, así que tampoco hay que
+  tocarlas. Si quieres archivar el audio en un montaje de red, fija `ACTAS_AUDIO_DIR`.
 - **Dónde va el `.env`**: en el modo local el servidor lee `server/.env`. Bajo systemd
   **no**: el unit declara `EnvironmentFile=-/etc/actas-server.env`, así que el archivo va
   ahí. `deploy.ps1` no lo copia (a propósito: contiene el token de HF).

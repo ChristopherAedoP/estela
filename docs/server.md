@@ -44,11 +44,13 @@ Ver `server/.env.example`. El archivo real no se versiona y su ubicación depend
 | `ACTAS_OLLAMA_MODEL` | `gemma4:12b-it-qat` | LLM del resumen |
 | `ACTAS_OLLAMA_URL` | `http://127.0.0.1:11434` | URL de Ollama |
 | `ACTAS_WHISPER_MODEL` | `large-v3` | Modelo Whisper |
-| `ACTAS_WHISPER_COMPUTE` | `float16` | Precisión |
+| `ACTAS_WHISPER_DEVICE` | `auto` | `auto`, `cuda` o `cpu` |
+| `ACTAS_WHISPER_COMPUTE` | `auto` | `float16` en GPU, `int8` en CPU |
 | `ACTAS_LANGUAGE` | `es` | Idioma |
-| `ACTAS_AUDIO_DIR` | `/mnt/actas/audio` | Carpeta donde archivar el audio |
-| `ACTAS_WHISPER_DEVICE` | `cuda` | `cuda` o `cpu` |
-| `ACTAS_TMP_DIR` | `/tmp/actas` | Temporales del pipeline |
+| `ACTAS_AUDIO_DIR` | directorio de datos del usuario | Carpeta donde archivar el audio |
+| `ACTAS_TMP_DIR` | temporal del sistema | Temporales del pipeline |
+| `ACTAS_MAX_SPEAKERS` | (vacío) | Acotar nº de hablantes |
+| `ACTAS_MIN_SPEAKERS` | (vacío) | Mínimo de hablantes |
 | `ACTAS_MAX_SPEAKERS` | (vacío) | Acotar nº de hablantes |
 | `ACTAS_MIN_SPEAKERS` | (vacío) | Mínimo de hablantes |
 
@@ -79,17 +81,12 @@ Get-Content .env | Where-Object { $_ -match '^\s*ACTAS_' } | ForEach-Object {
     $k,$v = $_ -split '=',2
     [System.Environment]::SetEnvironmentVariable($k.Trim(), $v.Trim(), 'Process')
 }
-$env:OPENBLAS_NUM_THREADS = "8"
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8770
 ```
 
-Dos avisos para este modo:
-
-- `ACTAS_AUDIO_DIR` y `ACTAS_TMP_DIR` tienen defaults de Linux (`/mnt/actas/audio`,
-  `/tmp/actas`). Hay que cambiarlos a rutas de Windows.
-- `OPENBLAS_NUM_THREADS` evita que OpenBLAS aborte el proceso al importar `torch` en
-  equipos con muchos núcleos. Ver
-  [troubleshooting.md](troubleshooting.md#el-servidor-arranca-pero-transcribe-devuelve-500).
+Las rutas por defecto (`ACTAS_AUDIO_DIR`, `ACTAS_TMP_DIR`) y el límite de hilos de las
+librerías de álgebra se resuelven solos según la plataforma, así que no hace falta
+configurar nada más para arrancar.
 
 El cliente puede arrancar este servidor por su cuenta si lo configuras como respaldo
 (`auto_start_local`); en ese caso hereda el entorno del propio cliente.
@@ -110,15 +107,37 @@ lo alcance desde otra máquina, uvicorn debe escuchar en `0.0.0.0`, no en `127.0
 | Endpoint | Método | Entrada | Respuesta |
 |---|---|---|---|
 | `/health` | GET | — | `{"status": "ok"}` |
+| `/health?deep=1` | GET | — | `{"status": "ok"\|"degraded", "checks": {...}}` |
 | `/transcribe` | POST | `multipart/form-data`: `audio` (archivo), `title` (texto) | `{filename, markdown, audio_path, duration_sec}` |
 
 `/transcribe` rechaza con 400 los audios de menos de 1 KB.
 
-`/health` **no ejercita el pipeline**: solo confirma que el proceso HTTP responde. `torch`,
-faster-whisper y pyannote se importan de forma perezosa dentro de la petición, así que un
-servidor que devuelve `ok` puede fallar igualmente al transcribir. La única dependencia
-pesada que se importa al arrancar es PyAV (`audio.py`); si esa falta, el proceso no levanta
-y `/health` no responde.
+`/health` sin parámetros **no ejercita el pipeline**: solo confirma que el proceso HTTP
+responde. `torch`, faster-whisper y pyannote se importan de forma perezosa dentro de la
+petición, así que un servidor que devuelve `ok` puede fallar igualmente al transcribir. Es
+barato a propósito, porque el cliente lo consulta para elegir servidor.
+
+`/health?deep=1` sí lo ejercita: importa las dependencias pesadas, informa del dispositivo
+resuelto y comprueba que Ollama responde y tiene el modelo configurado. Devuelve
+`degraded` si algo falla. Es la comprobación fiable antes de dar un servidor por bueno:
+
+```json
+{"status":"ok","checks":{
+  "pipeline":{"torch":true,"faster_whisper":true,"device":"cuda","compute":"float16"},
+  "ollama":{"url":"http://127.0.0.1:11434","model":"gemma4:12b-it-qat",
+            "reachable":true,"model_present":true}}}
+```
+
+La única dependencia pesada que se importa al arrancar es PyAV (`audio.py`); si esa falta,
+el proceso no levanta y `/health` no responde en absoluto.
+
+### Nombres de archivo
+
+El título lo escribe el usuario y acaba siendo un nombre de archivo. El servidor lo sanea
+en dos formas distintas (`app/naming.py`): `slugify` para el audio archivado, y
+`safe_note_name` para el `filename` que devuelve al cliente, que conserva acentos y
+mayúsculas por ser el nombre visible en el vault. Ese saneado es también lo que impide que
+un título con `..` o `/` haga que el cliente escriba fuera de su carpeta de actas.
 
 ## Tests
 

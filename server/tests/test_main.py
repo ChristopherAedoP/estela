@@ -9,6 +9,9 @@ def _no_vram_ops(monkeypatch):
     # Neutraliza efectos de infraestructura VRAM en los tests unitarios
     monkeypatch.setattr(main, "unload_ollama_model", lambda: True)
     monkeypatch.setattr(main, "free_torch_cache", lambda: None)
+    # Evita importar torch para decidir si hay que liberar VRAM: los tests no
+    # deben depender de que la maquina tenga GPU.
+    monkeypatch.setattr(main, "whisper_uses_cuda", lambda: True)
     # Por defecto sin diarización (Fase 1/2); los tests que la prueban lo sobreescriben
     monkeypatch.setattr(main, "diarize", lambda p, **kw: [])
 
@@ -90,6 +93,118 @@ def test_empty_transcription_skips_summary(monkeypatch):
     assert called["summarize"] is False
     assert "transcripcion: vacia" in md
     assert "## Resumen" not in md
+
+
+def test_no_descarga_ollama_si_whisper_va_en_cpu(monkeypatch):
+    # En CPU no hay competencia por VRAM: descargar el LLM solo forzaria una
+    # recarga completa al resumir.
+    from app.models import Segment
+
+    llamado = {"unload": False}
+
+    def _unload_spy():
+        llamado["unload"] = True
+        return True
+
+    monkeypatch.setattr(main, "unload_ollama_model", _unload_spy)
+    monkeypatch.setattr(main, "whisper_uses_cuda", lambda: False)
+    monkeypatch.setattr(main, "transcribe", lambda p: ([Segment(0.0, 1.0, "hola")], 1.0))
+    monkeypatch.setattr(main, "archive_audio", lambda s, t, d: "/x.wav")
+    monkeypatch.setattr(main, "summarize", lambda t: (None, False))
+
+    client = TestClient(main.app)
+    files = {"audio": ("t.wav", io.BytesIO(b"RIFF" + b"0" * 2000), "audio/wav")}
+    r = client.post("/transcribe", files=files, data={"title": "X"})
+    assert r.status_code == 200
+    assert llamado["unload"] is False
+
+
+def test_descarga_ollama_si_whisper_va_en_gpu(monkeypatch):
+    from app.models import Segment
+
+    llamado = {"unload": False}
+
+    def _unload_spy():
+        llamado["unload"] = True
+        return True
+
+    monkeypatch.setattr(main, "unload_ollama_model", _unload_spy)
+    monkeypatch.setattr(main, "whisper_uses_cuda", lambda: True)
+    monkeypatch.setattr(main, "transcribe", lambda p: ([Segment(0.0, 1.0, "hola")], 1.0))
+    monkeypatch.setattr(main, "archive_audio", lambda s, t, d: "/x.wav")
+    monkeypatch.setattr(main, "summarize", lambda t: (None, False))
+
+    client = TestClient(main.app)
+    files = {"audio": ("t.wav", io.BytesIO(b"RIFF" + b"0" * 2000), "audio/wav")}
+    client.post("/transcribe", files=files, data={"title": "X"})
+    assert llamado["unload"] is True
+
+
+def test_titulo_hostil_no_escapa_del_directorio_temporal(monkeypatch, tmp_path):
+    # El titulo llega del usuario y se usa como nombre de archivo temporal.
+    from app.models import Segment
+
+    monkeypatch.setattr(main.config, "tmp_dir", str(tmp_path))
+    monkeypatch.setattr(main, "transcribe", lambda p: ([Segment(0.0, 1.0, "hola")], 1.0))
+    monkeypatch.setattr(main, "archive_audio", lambda s, t, d: "/x.wav")
+    monkeypatch.setattr(main, "summarize", lambda t: (None, False))
+
+    client = TestClient(main.app)
+    files = {"audio": ("t.wav", io.BytesIO(b"RIFF" + b"0" * 2000), "audio/wav")}
+    r = client.post("/transcribe", files=files, data={"title": "../../pwned"})
+
+    assert r.status_code == 200
+    # Nada escrito fuera de tmp_path
+    assert not (tmp_path.parent / "pwned.src").exists()
+    # Y el nombre devuelto tampoco puede sacar al cliente de su carpeta de actas
+    filename = r.json()["filename"]
+    assert "/" not in filename
+    assert "\\" not in filename
+    assert ".." not in filename
+
+
+def test_filename_devuelto_es_valido_en_windows(monkeypatch):
+    # El cliente escribe la nota con este nombre; ':' la haria fallar en Windows.
+    from app.models import Segment
+
+    monkeypatch.setattr(main, "transcribe", lambda p: ([Segment(0.0, 1.0, "hola")], 1.0))
+    monkeypatch.setattr(main, "archive_audio", lambda s, t, d: "/x.wav")
+    monkeypatch.setattr(main, "summarize", lambda t: (None, False))
+
+    client = TestClient(main.app)
+    files = {"audio": ("t.wav", io.BytesIO(b"RIFF" + b"0" * 2000), "audio/wav")}
+    r = client.post("/transcribe", files=files, data={"title": "Daily: 10:30"})
+
+    filename = r.json()["filename"]
+    assert filename.endswith(".md")
+    for ch in '<>:"/\\|?*':
+        assert ch not in filename
+
+
+def test_health_deep_reporta_checks(monkeypatch):
+    monkeypatch.setattr(main, "pipeline_status", lambda: (True, {"torch": True}))
+    monkeypatch.setattr(main, "ollama_status", lambda: (False, {"reachable": False}))
+
+    client = TestClient(main.app)
+    r = client.get("/health", params={"deep": 1})
+    body = r.json()
+
+    assert r.status_code == 200
+    assert body["status"] == "degraded"
+    assert body["checks"]["pipeline"]["torch"] is True
+    assert body["checks"]["ollama"]["reachable"] is False
+
+
+def test_health_barato_no_ejercita_el_pipeline(monkeypatch):
+    # El cliente lo usa para elegir servidor: debe ser barato y no importar nada.
+    def _boom():
+        raise AssertionError("/health sin deep no debe comprobar el pipeline")
+
+    monkeypatch.setattr(main, "pipeline_status", _boom)
+    monkeypatch.setattr(main, "ollama_status", _boom)
+
+    client = TestClient(main.app)
+    assert client.get("/health").json() == {"status": "ok"}
 
 
 def test_transcribe_with_diarization(monkeypatch):

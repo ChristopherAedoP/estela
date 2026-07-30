@@ -1,7 +1,11 @@
+import logging
 import re
 
 from app.models import Segment
 from app.config import config
+from app.runtime import resolve_device_compute
+
+logger = logging.getLogger("actas.transcribe")
 
 
 def _is_degenerate(text: str) -> bool:
@@ -58,10 +62,15 @@ def transcribe(audio_path: str):
         no_repeat_ngram_size=3,             # prohíbe repetir n-gramas de 3
     )
 
+    device, compute = resolve_device_compute()
+    logger.info(
+        "whisper: modelo=%s device=%s compute=%s", config.whisper_model, device, compute
+    )
+
     model = WhisperModel(
         config.whisper_model,
-        device=config.whisper_device,
-        compute_type=config.whisper_compute,
+        device=device,
+        compute_type=compute,
     )
     try:
         # 1er intento: con VAD (filtra silencios, reduce alucinaciones).

@@ -27,43 +27,50 @@ Los modelos pesados (`torch`, faster-whisper, pyannote) se importan de forma per
 **dentro** de la petición de transcripción. Si uno de esos imports falla, el servidor
 levanta igual y sigue anunciándose como sano.
 
-**Causa más frecuente: OpenBLAS.** Al importar `torch`, OpenBLAS reserva buffers por cada
-hilo. En equipos con muchos núcleos, o con la memoria comprometida por otras cargas, esa
-reserva falla y aborta el proceso:
+**Diagnóstico rápido.** Pregúntale al propio servidor:
+
+```powershell
+curl "http://127.0.0.1:8770/health?deep=1"
+```
+
+A diferencia del `/health` normal, esta variante importa las dependencias pesadas y
+consulta Ollama. Si devuelve `degraded`, el campo `checks` dice exactamente qué falla.
+
+**Causa más frecuente: fallo de reserva de memoria de las librerías de álgebra.** Al cargar
+el modelo se reservan buffers por cada hilo. En equipos con muchos núcleos, o con la
+memoria del sistema comprometida por otras cargas, esa reserva falla y aborta la operación
+con alguno de estos mensajes:
 
 ```
 OpenBLAS error: Memory allocation still failed after 10 retries, giving up.
+RuntimeError: mkl_malloc: failed to allocate memory
 ```
 
-Engaña porque **no es falta de RAM libre**: puede pasar con decenas de GB disponibles, ya
-que lo que se agota es la reserva por hilo, no la memoria física.
+El primero viene de `torch` y el segundo de CTranslate2, el motor de faster-whisper.
 
-Diagnóstico — ejecuta el import a mano con el intérprete del venv del servidor:
+Engaña porque **no es falta de RAM libre**: ocurre con decenas de GB disponibles. Lo que se
+agota es la *memoria comprometible* del sistema (RAM más archivo de paginación).
+
+El servidor ya limita esos hilos a 8 al arrancar, así que este fallo no deberías verlo por
+el número de núcleos. Si aun así aparece:
+
+1. **Comprueba la memoria comprometida del sistema**, no la RAM libre. En Windows es la
+   línea "Confirmación" del Administrador de tareas. Si está cerca del límite, cierra
+   aplicaciones pesadas (máquinas virtuales, emuladores, navegadores con muchas pestañas) o
+   amplía el archivo de paginación.
+2. **Baja más el límite de hilos** antes de arrancar el servidor:
+
+   ```powershell
+   $env:OPENBLAS_NUM_THREADS = "2"; $env:OMP_NUM_THREADS = "2"; $env:MKL_NUM_THREADS = "2"
+   ```
+3. **Usa un modelo más pequeño** para descartar que sea puro tamaño:
+   `ACTAS_WHISPER_MODEL=medium` o `tiny`.
+
+Verifica el import a mano con el intérprete del venv del servidor:
 
 ```powershell
 .\.venv\Scripts\python -c "import torch, faster_whisper; print(torch.cuda.is_available())"
 ```
-
-Si imprime `True`, el problema es otro. Si aborta con el error de OpenBLAS, limita los
-hilos:
-
-```powershell
-$env:OPENBLAS_NUM_THREADS = "8"
-```
-
-Y vuelve a probar. Valores de 8 o menos resuelven el fallo. No se ha medido el impacto en
-rendimiento, pero se espera que sea menor, porque el trabajo pesado de Estela ocurre en la
-GPU y en Ollama, no en BLAS.
-
-Para que sea permanente y lo hereden los procesos lanzados por el cliente:
-
-```powershell
-[Environment]::SetEnvironmentVariable('OPENBLAS_NUM_THREADS','8','User')
-```
-
-Después hay que **reiniciar el cliente**, porque el servidor local se lanza como proceso
-hijo suyo y hereda su entorno. Ojo: `server/.env` no sirve para esto, ya que el cliente
-solo propaga las variables con prefijo `ACTAS_`.
 
 **Otras causas del mismo 500**, si el import de `torch` funciona:
 
