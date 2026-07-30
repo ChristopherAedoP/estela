@@ -65,14 +65,19 @@ class Config:
     # OBS (obs-websocket). El password se genera en OBS y se pone en Ajustes.
     obs_url: str = "ws://127.0.0.1:4455"
     obs_password: str = ""
-    obs_exe: str = r"C:\Program Files\obs-studio\bin\64bit\obs64.exe"
+    # Vacio = se busca OBS en el PATH y en las rutas habituales de la plataforma
+    # (ver infra.resolve_obs_exe). Cablear aqui una ruta de Windows dejaba el
+    # cliente inservible en cualquier otro sistema y en instalaciones portables.
+    obs_exe: str = ""
     obs_input_name: str = "Audio Escritorio (Actas)"
     audio_device_id: str = "default"  # device_id de la salida a grabar
     audio_device_label: str = "Por defecto"
     # Ganancia de audio en dB aplicada a la captura (las salidas HDMI/NVIDIA, como
     # los parlantes de un monitor, se capturan a nivel muy bajo; +20dB lo compensa)
     audio_gain_db: float = 20.0
-    # Carpeta donde OBS guarda las grabaciones
+    # Carpeta donde OBS guarda las grabaciones. La ruta real la decide el perfil
+    # de OBS y la devuelve stop_record(); este campo se conserva por
+    # compatibilidad con configuraciones existentes, pero no lo lee nadie.
     recordings_dir: str = str(Path.home() / "Videos" / "estela-rec")
     # Comportamiento
     ask_title: bool = True

@@ -1,8 +1,23 @@
 """Tests de la cascada de resolución de servidor (NAS -> VM -> local -> arranque local)."""
 from __future__ import annotations
 
+import pytest
+
 import actas.infra as infra
 from actas.config import Config
+
+# Referencia a la implementacion real, porque el fixture autouse de abajo la
+# sustituye para el resto de tests.
+_SERVER_READY_REAL = infra.server_ready
+
+
+@pytest.fixture(autouse=True)
+def _servidor_operativo(monkeypatch):
+    """Por defecto, todo servidor que responde tambien puede transcribir.
+
+    Los tests que prueban lo contrario lo sobreescriben.
+    """
+    monkeypatch.setattr(infra, "server_ready", lambda url, timeout=180.0: (True, "ok"))
 
 
 def _cfg(**overrides) -> Config:
@@ -71,6 +86,53 @@ def test_vm_falla_cae_a_local(monkeypatch):
     monkeypatch.setattr(infra, "start_vm", lambda cfg: (False, "ssh timeout"))
     cfg = _cfg(auto_start_vm=True, proxmox_host="proxmox-host.example", vm_id="120")
     assert infra.resolve_server(cfg) == "http://localhost:8770"
+
+
+def test_primario_responde_pero_no_puede_transcribir_cae_a_local(monkeypatch):
+    # El caso que dejaba la cola en bucle: /health decia "ok" y cada trabajo
+    # terminaba en 500 porque la pila de modelos del servidor estaba rota.
+    monkeypatch.setattr(infra, "url_healthy", lambda url, timeout=4.0: True)
+    monkeypatch.setattr(
+        infra,
+        "server_ready",
+        lambda url, timeout=180.0: (False, "torch roto") if url == "http://nas:8770" else (True, "ok"),
+    )
+    assert infra.resolve_server(_cfg()) == "http://localhost:8770"
+
+
+def test_ninguno_puede_transcribir_devuelve_none(monkeypatch):
+    monkeypatch.setattr(infra, "url_healthy", lambda url, timeout=4.0: True)
+    monkeypatch.setattr(infra, "server_ready", lambda url, timeout=180.0: (False, "degraded"))
+    assert infra.resolve_server(_cfg()) is None
+
+
+def test_server_ready_acepta_servidor_antiguo_sin_deep(monkeypatch):
+    # Un servidor previo ignora el parametro deep y responde el ok de siempre.
+    class _R:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"status": "ok"}
+
+    monkeypatch.setattr(infra.httpx, "get", lambda *a, **kw: _R())
+    ok, detalle = _SERVER_READY_REAL("http://viejo:8770")
+    assert ok is True
+    assert detalle == "ok"
+
+
+def test_server_ready_detecta_degradado(monkeypatch):
+    class _R:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"status": "degraded", "checks": {"pipeline": {"torch": False}}}
+
+    monkeypatch.setattr(infra.httpx, "get", lambda *a, **kw: _R())
+    ok, detalle = _SERVER_READY_REAL("http://roto:8770")
+    assert ok is False
+    assert "torch" in detalle
 
 
 def test_host_port_parsing():

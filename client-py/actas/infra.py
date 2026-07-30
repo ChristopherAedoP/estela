@@ -3,6 +3,7 @@ arranque del servidor local y resolución del servidor efectivo (cascada NAS -> 
 from __future__ import annotations
 
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -41,8 +42,43 @@ def obs_running() -> bool:
             capture_output=True, text=True, **_no_window_kwargs(),
         )
         return "obs64.exe" in out.stdout
-    out = subprocess.run(["pgrep", "-x", "obs"], capture_output=True, text=True)
+    # -i: en macOS el proceso se llama "OBS" y sin ignorar mayusculas nunca
+    # se detectaria como corriendo.
+    out = subprocess.run(["pgrep", "-xi", "obs"], capture_output=True, text=True)
     return out.returncode == 0
+
+
+# Rutas habituales de instalacion, por plataforma. Solo se usan si el usuario no
+# ha configurado obs_exe y OBS no esta en el PATH.
+_OBS_CANDIDATES = {
+    "win32": [
+        r"C:\Program Files\obs-studio\bin\64bit\obs64.exe",
+        r"C:\Program Files (x86)\obs-studio\bin\64bit\obs64.exe",
+    ],
+    "darwin": ["/Applications/OBS.app/Contents/MacOS/OBS"],
+}
+
+
+def resolve_obs_exe(cfg: Config) -> Path | None:
+    """Localiza el ejecutable de OBS.
+
+    Orden: lo configurado por el usuario, luego el PATH, y por ultimo las rutas
+    de instalacion habituales de la plataforma. Devuelve None si no aparece.
+    """
+    if cfg.obs_exe:
+        p = Path(cfg.obs_exe)
+        return p if p.exists() else None
+
+    for name in ("obs64", "obs"):
+        found = shutil.which(name)
+        if found:
+            return Path(found)
+
+    for candidate in _OBS_CANDIDATES.get(sys.platform, []):
+        p = Path(candidate)
+        if p.exists():
+            return p
+    return None
 
 
 def ensure_obs(cfg: Config, wait_s: int = 20) -> bool:
@@ -50,9 +86,12 @@ def ensure_obs(cfg: Config, wait_s: int = 20) -> bool:
     port = int(cfg.obs_url.rsplit(":", 1)[-1])
     if not tcp_open("127.0.0.1", port):
         if not obs_running():
-            exe = Path(cfg.obs_exe)
-            if not exe.exists():
-                raise FileNotFoundError(f"No se encontró OBS en {exe}")
+            exe = resolve_obs_exe(cfg)
+            if exe is None:
+                raise FileNotFoundError(
+                    "No se encontró OBS. Indica la ruta del ejecutable en "
+                    "Ajustes → Ejecutable de OBS, o asegúrate de que esté en el PATH."
+                )
             subprocess.Popen(
                 [str(exe), "--minimize-to-tray", "--disable-shutdown-check"],
                 cwd=str(exe.parent),
@@ -78,6 +117,31 @@ def url_healthy(base_url: str, timeout: float = 4.0) -> bool:
 
 def server_healthy(cfg: Config, timeout: float = 4.0) -> bool:
     return url_healthy(cfg.server_url, timeout=timeout)
+
+
+def server_ready(base_url: str, timeout: float = 180.0) -> tuple[bool, str]:
+    """Comprueba que el servidor puede transcribir de verdad, no solo responder.
+
+    /health es deliberadamente barato: el servidor levanta y responde "ok" aunque
+    su pila de modelos este rota, porque los imports pesados ocurren dentro de la
+    peticion. Eso hacia que el cliente eligiera un servidor que despues devolvia
+    500 en cada trabajo, dejando la cola en un bucle de reintentos.
+
+    /health?deep=1 si ejercita esas dependencias. Un servidor antiguo que no
+    conozca el parametro devuelve el "ok" de siempre, asi que se considera listo.
+    """
+    if not base_url:
+        return False, "sin URL"
+    try:
+        r = httpx.get(f"{base_url}/health", params={"deep": 1}, timeout=timeout)
+        if r.status_code != 200:
+            return False, f"HTTP {r.status_code}"
+        body = r.json()
+        if body.get("status") == "ok":
+            return True, "ok"
+        return False, str(body.get("checks", body))
+    except Exception as e:  # noqa: BLE001
+        return False, str(e)
 
 
 def ollama_up(base_url: str, timeout: float = 3.0) -> bool:
@@ -211,11 +275,25 @@ def resolve_server(cfg: Config, emit: Optional[Callable[[str, str], None]] = Non
       2. auto_start_vm: encender VM + esperar -> primario.
       3. local (local_server_url) healthy -> local.
       4. auto_start_local: arrancar local -> local.
+
+    Antes de dar por bueno un candidato se comprueba que ademas pueda transcribir
+    (server_ready). Un servidor con la pila de modelos rota responde "ok" al
+    /health barato, y sin esta comprobacion se elegiria una y otra vez para acabar
+    fallando con 500 en cada trabajo.
     """
     say = emit or (lambda s, d: None)
 
+    def _usable(url: str, etiqueta: str) -> bool:
+        if not url_healthy(url):
+            return False
+        ok, detalle = server_ready(url)
+        if not ok:
+            log.warning("%s responde pero no puede transcribir: %s", etiqueta, detalle)
+            say("warn", f"{etiqueta} no está operativo, probando otra opción…")
+        return ok
+
     # 1) Primario ya disponible
-    if url_healthy(cfg.server_url):
+    if _usable(cfg.server_url, "El servidor principal"):
         return cfg.server_url
 
     # 2) Intentar encender la VM del primario
@@ -228,7 +306,7 @@ def resolve_server(cfg: Config, emit: Optional[Callable[[str, str], None]] = Non
         log.warning("no se pudo usar el servidor principal: %s", msg)
 
     # 3) Local ya disponible
-    if url_healthy(cfg.local_server_url):
+    if _usable(cfg.local_server_url, "El servidor local"):
         say("local", "Usando servidor local")
         return cfg.local_server_url
 

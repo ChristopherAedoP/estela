@@ -77,7 +77,8 @@ normalmente no hace falta editar el JSON a mano: casi todo se configura desde la
 | `vault_path` | Carpeta del vault de Obsidian |
 | `actas_dir` | Subcarpeta de actas dentro del vault, o ruta absoluta |
 | `proxmox_host`, `vm_id`, `auto_start_vm` | Encendido por SSH de una VM que aloje el servidor |
-| `obs_url`, `obs_password`, `obs_exe`, `obs_input_name` | Conexión y fuente de OBS |
+| `obs_url`, `obs_password`, `obs_input_name` | Conexión y fuente de OBS. Editables en Ajustes |
+| `obs_exe` | Ejecutable de OBS. Vacío = se busca en el `PATH` y en las rutas habituales |
 | `audio_device_id`, `audio_device_label` | Salida de audio a capturar |
 | `audio_gain_db` | Ganancia aplicada a la captura. ~20 dB en salidas HDMI o de monitor |
 | `recordings_dir` | Carpeta temporal de los `.mka` antes de subirlos |

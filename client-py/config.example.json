@@ -17,7 +17,7 @@
 
   "obs_url": "ws://127.0.0.1:4455",
   "obs_password": "<password-del-websocket-de-obs>",
-  "obs_exe": "C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe",
+  "obs_exe": "",
   "obs_input_name": "Audio Escritorio (Actas)",
   "audio_device_id": "default",
   "audio_device_label": "Por defecto",
