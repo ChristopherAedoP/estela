@@ -91,6 +91,50 @@ configurar nada más para arrancar.
 El cliente puede arrancar este servidor por su cuenta si lo configuras como respaldo
 (`auto_start_local`); en ese caso hereda el entorno del propio cliente.
 
+## Docker
+
+Es el camino recomendado para instalarlo en una máquina nueva: evita el entorno virtual,
+las librerías de CUDA y la versión de Python.
+
+```bash
+docker compose up                 # servidor + Ollama
+docker compose up actas-server    # solo el servidor
+```
+
+La segunda forma es la que hay que usar cuando **la máquina ya ejecuta Ollama** para otra
+cosa: levantar un segundo Ollama haría que ambos compitieran por la misma VRAM. En ese caso
+apunta `ACTAS_OLLAMA_URL` al que ya existe (`http://host.docker.internal:11434` en Docker
+Desktop, o la IP del host en Linux).
+
+Ojo con eso: **Ollama escucha solo en `127.0.0.1` por defecto**, así que desde el
+contenedor la conexión se rechaza aunque el servicio esté corriendo. Hay que arrancarlo con
+`OLLAMA_HOST=0.0.0.0` para que acepte conexiones del contenedor. Si no lo haces, el
+servidor transcribe igual y las actas salen con `resumen: pendiente`.
+
+### Comprueba la GPU antes de confiar en ella
+
+`ACTAS_WHISPER_DEVICE=auto` cae a CPU **sin fallar** si el contenedor no ve la GPU, así que
+un servidor lento puede parecer que funciona. Verifícalo explícitamente:
+
+```bash
+curl "http://localhost:8770/health?deep=1"
+```
+
+`checks.pipeline.device` debe decir `cuda`. Si dice `cpu` teniendo GPU, ver
+[troubleshooting.md](troubleshooting.md#el-contenedor-no-ve-la-gpu).
+
+Detalles de la imagen:
+
+- Base `python:3.12-slim`; las librerías de CUDA se instalan por pip en vez de partir de una
+  imagen base de CUDA. Pesa menos y evita casar la versión de CUDA con la del host, que
+  aporta el driver mediante el NVIDIA Container Toolkit.
+- Sin el toolkit el contenedor no ve la GPU y cae a CPU. Quita los bloques `deploy:` del
+  compose si no lo tienes.
+- Volúmenes: `/data/audio` para el audio archivado y `/data/models` para los modelos
+  descargados, de modo que sobrevivan a recrear el contenedor.
+- El `HEALTHCHECK` usa el `/health` barato. El profundo importa los modelos y tardaría
+  demasiado para una comprobación periódica.
+
 ## Despliegue (servidor remoto)
 
 ```powershell
@@ -99,8 +143,18 @@ pwsh -File deploy.ps1
 ssh <user@host> "sudo systemctl restart actas-server"
 ```
 
-El servicio `actas-server.service` corre con uvicorn en el puerto 8770. Para que el cliente
-lo alcance desde otra máquina, uvicorn debe escuchar en `0.0.0.0`, no en `127.0.0.1`.
+`deploy.ps1` **solo sincroniza código** sobre un servidor ya provisionado: no crea el venv,
+ni el usuario del servicio, ni instala el unit, ni escribe `/etc/actas-server.env` (lo
+excluye a propósito porque contiene el token de Hugging Face).
+
+El servicio arranca mediante `actas-server-start.sh`, que resuelve `LD_LIBRARY_PATH`
+preguntándole al intérprete del venv dónde están las librerías de NVIDIA. Así la versión de
+Python no queda cableada en el unit, que era la causa de que un venv con otra versión
+produjera `libcublas.so.12 not found`.
+
+El unit trae `User=actas`: créalo o ajústalo al propietario del venv, que además debe poder
+escribir en `ACTAS_AUDIO_DIR`. Uvicorn escucha en `0.0.0.0:8770` para que el cliente lo
+alcance desde otra máquina.
 
 ## API
 

@@ -96,6 +96,48 @@ python.org normalmente hay un único proceso. Si te pasa, son padre e hijo: que 
 comandos muestre la ruta del Python del sistema **no** significa que el servidor esté
 corriendo fuera del venv.
 
+## El contenedor no ve la GPU
+
+Síntoma: `/health?deep=1` devuelve `"device":"cpu"` en una máquina con GPU NVIDIA, y la
+transcripción tarda muchísimo. Como `auto` cae a CPU sin fallar, es un problema silencioso.
+
+Comprueba por capas, de fuera hacia dentro:
+
+```bash
+# 1. El host ve la GPU
+nvidia-smi
+
+# 2. El NVIDIA Container Toolkit pasa el driver al contenedor
+docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+
+# 3. El runtime de CUDA inicializa dentro de la imagen
+docker run --rm --gpus all estela/actas-server \
+  python -c "import torch; print(torch.cuda.is_available())"
+```
+
+Si falla el paso 2, falta el
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+
+Si el paso 2 pasa pero el 3 falla con un error así:
+
+```
+CUDA initialization: Unexpected error from cudaGetDeviceCount().
+Error 500: named symbol not found
+```
+
+el driver llega al contenedor pero el runtime de CUDA no puede inicializarse. Comprobado en
+un host Windows con WSL2, driver 610.47 y Docker Desktop 24.0.7: `nvidia-smi` funciona
+dentro del contenedor, pero `torch` no inicializa **ni con CUDA 12.4 ni con 12.6**, mientras
+que el mismo torch sí usa la GPU de forma nativa en ese equipo. Descartado que sea mezcla de
+versiones de `nvidia-cublas`/`cudnn` o el `LD_LIBRARY_PATH` de la imagen.
+
+Qué hacer:
+
+- **Actualiza Docker Desktop** (24.0.7 es de 2023 y bastante anterior a los drivers
+  actuales). Es la causa más probable.
+- Mientras tanto, en ese equipo usa el servidor **sin contenedor**, en el venv, donde la GPU
+  sí funciona. En Linux con `nvidia-container-toolkit` al día este problema no aparece.
+
 ## Cliente (captura / app)
 
 | Síntoma | Causa | Solución |

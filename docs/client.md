@@ -68,7 +68,7 @@ persistente), `actas.log`.
 ```powershell
 cd client-py
 python -m venv .venv
-.\.venv\Scripts\pip install -r requirements.txt pyinstaller
+.\.venv\Scripts\pip install -r requirements.txt -r requirements-dev.txt
 pwsh -File build.ps1     # genera dist\Estela.exe
 ```
 

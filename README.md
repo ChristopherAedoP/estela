@@ -61,20 +61,30 @@ Puedes correrlo **todo en un PC** o separar el cliente del servidor en dos máqu
 
 ## Quickstart
 
+**Servidor con Docker** (lo más corto; requiere NVIDIA Container Toolkit):
+
+```bash
+docker compose up                 # servidor + Ollama
+docker compose exec ollama ollama pull gemma4:12b-it-qat
+```
+
+**Servidor sin Docker:**
+
 ```powershell
-# Servidor
 cd server
 python -m venv .venv
-.\.venv\Scripts\pip install -r requirements.txt
 .\.venv\Scripts\pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
-copy .env.example .env        # edita las rutas: los defaults son de Linux
+.\.venv\Scripts\pip install ".[gpu]"
 ollama pull gemma4:12b-it-qat
+```
 
-# Cliente
-cd ..\client-py
+**Cliente (Windows):**
+
+```powershell
+cd client-py
 python -m venv .venv
-.\.venv\Scripts\pip install -r requirements.txt pyinstaller
-pwsh -File build.ps1          # genera dist\Estela.exe
+.\.venv\Scripts\pip install -r requirements.txt -r requirements-dev.txt
+pwsh -File build.ps1              # genera dist\Estela.exe
 ```
 
 Ejecuta `Estela.exe`, abre **Ajustes** → apunta al servidor, elige el vault, la salida de

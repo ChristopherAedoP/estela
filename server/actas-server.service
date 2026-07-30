@@ -1,18 +1,26 @@
 [Unit]
-Description=Actas transcription server
-After=network-online.target ollama.service mnt-actas.automount
+Description=Estela actas-server
+After=network-online.target ollama.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=ia
-Group=ia
+# Ajusta el usuario al propietario del venv, que ademas debe poder escribir en
+# ACTAS_AUDIO_DIR. Creacion: sudo useradd --system --home /opt/actas-server actas
+User=actas
+Group=actas
 WorkingDirectory=/opt/actas-server
-Environment=ACTAS_AUDIO_DIR=/mnt/actas/audio
-Environment=ACTAS_OLLAMA_URL=http://127.0.0.1:11434
-Environment=LD_LIBRARY_PATH=/opt/actas-server/.venv/lib/python3.13/site-packages/nvidia/cublas/lib:/opt/actas-server/.venv/lib/python3.13/site-packages/nvidia/cudnn/lib
+
+# Toda la configuracion vive en este archivo: ACTAS_AUDIO_DIR, ACTAS_HF_TOKEN,
+# ACTAS_OLLAMA_URL, ACTAS_OLLAMA_MODEL... No se versiona ni lo copia deploy.ps1
+# porque contiene el token de Hugging Face. El guion inicial hace que el servicio
+# arranque igual si todavia no existe, usando los valores por defecto.
 EnvironmentFile=-/etc/actas-server.env
-ExecStart=/opt/actas-server/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8770
+
+# El guion resuelve LD_LIBRARY_PATH a partir del venv, para no cablear aqui la
+# version de Python.
+ExecStart=/opt/actas-server/actas-server-start.sh
+
 Restart=on-failure
 RestartSec=5
 

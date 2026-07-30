@@ -1,0 +1,4 @@
+# Dependencias solo de desarrollo del cliente.
+#   pip install -r requirements.txt -r requirements-dev.txt
+pytest>=8,<9
+pyinstaller>=6,<7

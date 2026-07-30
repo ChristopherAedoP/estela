@@ -44,16 +44,40 @@ que ya tengas, puedes saltártelo.
 
 ## Paso 1 — Servidor
 
+Hay dos caminos. **Con Docker** te ahorras el entorno virtual, las librerías de CUDA y la
+versión de Python; solo necesitas Docker y el
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+para que el contenedor vea la GPU:
+
+```bash
+docker compose up                 # servidor + Ollama
+docker compose up actas-server    # solo el servidor, si ya tienes Ollama
+```
+
+Con eso el servidor queda escuchando en el puerto 8770 y puedes **saltar a los pasos 2 y 3
+solo para elegir modelo**, y de ahí al paso 5. El resto de este paso es la instalación
+manual.
+
+**Sin Docker:**
+
 ```powershell
 cd server
 python -m venv .venv
-.\.venv\Scripts\pip install -r requirements.txt
 ```
 
-Instala torch con soporte CUDA (la rueda por defecto de PyPI puede venir sin CUDA):
+Instala primero torch con soporte CUDA. Las ruedas de PyPI no sirven: en Linux arrastran
+otra versión de CUDA y en Windows vienen sin ella.
 
 ```powershell
 .\.venv\Scripts\pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+```
+
+Y luego el servidor con sus dependencias. El extra `[gpu]` añade las librerías de CUDA que
+necesita CTranslate2; **omítelo si vas a correr en CPU**, porque no existen para macOS y
+harían fallar la instalación:
+
+```powershell
+.\.venv\Scripts\pip install ".[gpu]"
 ```
 
 Comprueba que la GPU se ve desde el venv:
@@ -154,12 +178,12 @@ markdown del acta, el servidor está completo. Audios de menos de 1 KB se rechaz
 ```powershell
 cd client-py
 python -m venv .venv
-.\.venv\Scripts\pip install -r requirements.txt pyinstaller pytest
+.\.venv\Scripts\pip install -r requirements.txt -r requirements-dev.txt
 pwsh -File build.ps1
 ```
 
-`pytest` no está en `requirements.txt` (el cliente no lo necesita para funcionar); se
-instala aquí solo para poder ejecutar los tests del final de esta guía.
+`requirements-dev.txt` trae `pyinstaller` (para compilar) y `pytest` (para los tests del
+final de esta guía). El cliente no los necesita para funcionar.
 
 Genera `dist\Estela.exe`. También puedes ejecutarlo sin compilar con
 `.\.venv\Scripts\python -m actas`.
@@ -213,14 +237,19 @@ Diferencias importantes:
 - **Dónde va el `.env`**: en el modo local el servidor lee `server/.env`. Bajo systemd
   **no**: el unit declara `EnvironmentFile=-/etc/actas-server.env`, así que el archivo va
   ahí. `deploy.ps1` no lo copia (a propósito: contiene el token de HF).
-- **`deploy.ps1` solo actualiza el código** (`app/`, `tests/`, `requirements.txt`,
-  `pytest.ini`, el unit) sobre un servidor **ya provisionado**. La primera vez hay que
-  crear a mano el destino, el venv, el `/etc/actas-server.env` y habilitar el servicio;
-  `systemctl restart actas-server` falla si el unit no está instalado todavía.
-- **Versión de Python**: `actas-server.service` cablea `python3.13` dentro de
-  `LD_LIBRARY_PATH` para encontrar las librerías CUDA. Si creas el venv con otra versión,
-  ajusta esa ruta en el unit o verás el `libcublas.so.12 not found` que documenta
-  [troubleshooting.md](troubleshooting.md).
+- **`deploy.ps1` solo actualiza el código** (`app/`, `tests/`, `pyproject.toml`,
+  `pytest.ini`, el unit y el guion de arranque) sobre un servidor **ya provisionado**. La
+  primera vez hay que crear a mano el destino, el venv, el usuario del servicio y
+  `/etc/actas-server.env`, e instalar el unit; `systemctl restart actas-server` falla si el
+  unit no está instalado todavía.
+- **Usuario del servicio**: el unit trae `User=actas`. Créalo
+  (`sudo useradd --system --home /opt/actas-server actas`) o cambia el valor al usuario
+  propietario del venv, que además debe poder escribir en `ACTAS_AUDIO_DIR`.
+- **Configuración**: bajo systemd todas las variables van en `/etc/actas-server.env`, no en
+  `server/.env`. `deploy.ps1` no lo copia a propósito, porque lleva el token de Hugging
+  Face.
+- El arranque usa `actas-server-start.sh`, que resuelve `LD_LIBRARY_PATH` preguntándole al
+  intérprete del venv. Así la versión de Python no queda cableada en el unit.
 - El unit ya arranca uvicorn en `0.0.0.0:8770`, necesario para que el cliente lo alcance
   desde otra máquina.
 - En el cliente, **Servidor** apunta a `http://<host>:8770`.
