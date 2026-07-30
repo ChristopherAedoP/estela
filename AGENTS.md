@@ -23,6 +23,7 @@ La documentación vive en [`docs/`](docs/). Consultarla y mantenerla actualizada
 - [`docs/client.md`](docs/client.md) — Cliente: app de bandeja, OBS, ganancia, cola.
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) — Problemas conocidos y sus soluciones.
 - [`docs/decisions.md`](docs/decisions.md) — Decisiones técnicas (ADRs).
+- [`docs/roadmap.md`](docs/roadmap.md) — Roadmap de mejoras (usabilidad y funcionalidad).
 
 Además: `README.md` (portada) y `CHANGELOG.md` (historial). Si un cambio afecta a la
 arquitectura, el comportamiento o la operación, **actualizar la doc correspondiente en el

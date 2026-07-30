@@ -77,6 +77,7 @@ Ver [`docs/server.md`](docs/server.md) para la instalación completa (modelos, C
 - [`docs/client.md`](docs/client.md) — App de bandeja, OBS, ganancia, cola.
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) — Problemas resueltos y sus fixes.
 - [`docs/decisions.md`](docs/decisions.md) — Decisiones técnicas (ADRs).
+- [`docs/roadmap.md`](docs/roadmap.md) — Mejoras planificadas (usabilidad y funcionalidad).
 - [`CHANGELOG.md`](CHANGELOG.md) — Historial de versiones.
 
 ## Stack
