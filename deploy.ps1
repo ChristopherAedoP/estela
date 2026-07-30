@@ -23,11 +23,16 @@ Write-Host "Sincronizando $src -> ${Vm}:$dest ..."
 
 ssh $Vm "mkdir -p $dest" 2>&1 | Out-Null
 
-$items = @("app", "tests", "requirements.txt", "pytest.ini", "actas-server.service")
+$items = @("app", "tests", "pyproject.toml", "pytest.ini", "actas-server.service", "actas-server-start.sh")
 foreach ($it in $items) {
     $p = Join-Path $src $it
     if (Test-Path -LiteralPath $p) {
         scp -q -r $p "${Vm}:$dest/" 2>&1 | Out-Null
     }
 }
+# scp no preserva el bit de ejecucion al copiar desde Windows.
+ssh $Vm "chmod +x $dest/actas-server-start.sh" 2>&1 | Out-Null
+
 Write-Host "Deploy completo. Reinicia el servicio: ssh $Vm 'sudo systemctl restart actas-server'"
+Write-Host "NOTA: solo se actualiza el codigo. El venv, el unit de systemd y" -ForegroundColor Yellow
+Write-Host "      /etc/actas-server.env se gestionan a mano en el servidor." -ForegroundColor Yellow

@@ -86,10 +86,10 @@ C4Component
     Rel(main, vram, "2. libera GPU")
     Rel(main, transcribe, "3. transcribe")
     Rel(main, diarize, "4. diariza")
-    Rel(main, merge, "5. fusiona")
-    Rel(main, summarize, "6. resume")
-    Rel(main, notebuild, "7. genera md")
-    Rel(main, archive, "8. archiva")
+    Rel(main, archive, "5. archiva")
+    Rel(main, merge, "6. fusiona")
+    Rel(main, summarize, "7. resume")
+    Rel(main, notebuild, "8. genera md")
 ```
 
 ## Flujo principal (secuencia)
@@ -119,6 +119,27 @@ sequenceDiagram
     Q->>Q: borra .mka local
     Q-->>A: toast "Acta lista"
 ```
+
+## Topologías de despliegue
+
+Los diagramas anteriores muestran la separación lógica cliente/servidor, no una única forma
+de instalarlo. Las dos piezas pueden vivir juntas o separadas:
+
+| Topología | Dónde corre el servidor | Notas |
+|---|---|---|
+| **Todo en un PC** | El mismo Windows que graba | La más simple. Requiere GPU en ese PC |
+| **Cliente + servidor remoto** | Una máquina Linux con GPU | El servidor puede encenderse bajo demanda |
+
+El cliente no fija el servidor: lo **resuelve en cada trabajo** con una cascada
+(`infra.resolve_server`) que prueba el principal, opcionalmente enciende la máquina que lo
+aloja, y si nada responde puede arrancar y usar un servidor local en el propio PC. Así la
+misma instalación transcribe contra el servidor remoto cuando está disponible y contra el
+PC cuando no, sin cambiar la configuración. Detalle en
+[client.md](client.md#servidor-primario-nas-con-respaldo-local).
+
+Una consecuencia de diseño a tener presente: el `/health` que usa esa cascada solo
+comprueba que el proceso HTTP responde, no que el pipeline funcione. Un servidor con los
+modelos rotos se anuncia como sano y los trabajos fallan al llegar a `/transcribe`.
 
 ## Decisiones clave de arquitectura
 

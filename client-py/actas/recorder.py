@@ -40,6 +40,8 @@ class Recorder:
         self.cfg = cfg
         self._on_progress = on_progress or (lambda s, d: None)
         self._recording = False
+        # URL del servidor efectivo resuelto para el trabajo en curso (NAS o local).
+        self._effective_url: str | None = None
 
     @property
     def recording(self) -> bool:
@@ -117,22 +119,22 @@ class Recorder:
         return note_path
 
     def _ensure_server(self, emit: ProgressCb) -> None:
-        if infra.server_healthy(self.cfg):
-            return
-        log.warning("server NO healthy en %s", self.cfg.server_url)
-        if not self.cfg.auto_start_vm:
-            raise RecorderError("El servidor no responde (VM apagada).")
-        emit("vm", "Encendiendo la VM 120…")
-        ok, msg = infra.start_vm(self.cfg)
-        log.info("start_vm -> ok=%s msg=%s", ok, msg)
-        if not ok:
-            raise RecorderError(f"No se pudo encender la VM: {msg}")
-        if not infra.wait_server(self.cfg):
-            log.warning("wait_server timeout")
-            raise RecorderError("La VM no quedó lista a tiempo.")
+        """Resuelve el servidor efectivo (cascada NAS -> local) y lo fija.
+
+        Lanza RecorderError si ningún servidor (primario ni local) queda disponible.
+        """
+        url = infra.resolve_server(self.cfg, emit=emit)
+        if not url:
+            raise RecorderError(
+                "Ningún servidor disponible: el principal no responde y no se pudo "
+                "usar el servidor local."
+            )
+        self._effective_url = url
+        log.info("servidor efectivo: %s", url)
 
     def _upload(self, recording: Path, title: str) -> Path:
-        log.info("subiendo a %s/transcribe", self.cfg.server_url)
+        server_url = self._effective_url or self.cfg.server_url
+        log.info("subiendo a %s/transcribe", server_url)
         # Leer los bytes completos: pasar un file handle a httpx con archivos grandes
         # puede provocar "Too much data for declared Content-Length" si el tamaño
         # difiere entre el cálculo y el envío. Con bytes, httpx fija bien el length.
@@ -141,7 +143,7 @@ class Recorder:
         data = {"title": title}
         with httpx.Client(timeout=1800) as client:
             r = client.post(
-                f"{self.cfg.server_url}/transcribe", files=files, data=data
+                f"{server_url}/transcribe", files=files, data=data
             )
             r.raise_for_status()
             resp = r.json()

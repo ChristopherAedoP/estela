@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "actas-server"
+version = "1.1.0"
+description = "Servidor de transcripcion, diarizacion y resumen de reuniones (Estela)"
+# Sin referencias a README/LICENSE del repositorio: quedan fuera del contexto de
+# build de la imagen Docker, que es solo el directorio server/.
+license = { text = "MIT" }
+# torch 2.6.0 publica ruedas hasta cp313. Sin este limite, quien tenga un Python
+# mas nuevo ve fallar la instalacion con un error de resolucion poco claro.
+requires-python = ">=3.10,<3.14"
+
+dependencies = [
+    "fastapi>=0.115,<0.116",
+    "uvicorn[standard]>=0.32,<0.35",
+    "python-multipart>=0.0.9,<0.1",
+    "faster-whisper>=1.0,<2.0",
+    # PyAV se usa directamente en app/audio.py. Llegaba solo como dependencia
+    # transitiva de faster-whisper, lo que dejaba el arranque a merced de un
+    # cambio ajeno: es el unico import pesado que ocurre al cargar el modulo.
+    "av>=11",
+    "httpx>=0.27,<0.29",
+    "pydantic>=2.7,<3",
+    "pyannote.audio>=3.3,<4",
+    "torch==2.6.0",
+    "torchaudio==2.6.0",
+    # pyannote 3.x usa use_auth_token, eliminado en huggingface_hub 0.26.
+    "huggingface_hub>=0.23,<0.26",
+]
+
+[project.optional-dependencies]
+# Librerias de runtime de CUDA para CTranslate2 (el motor de faster-whisper).
+# Van aparte porque no publican ruedas para macOS: incluirlas en las
+# dependencias base hace que `pip install` aborte en cualquier Mac, y son inutiles
+# en una instalacion que vaya a correr en CPU.
+gpu = [
+    "nvidia-cublas-cu12>=12.4,<13",
+    "nvidia-cudnn-cu12>=9,<10",
+]
+dev = [
+    "pytest>=8,<9",
+]
+
+[tool.setuptools]
+packages = ["app"]

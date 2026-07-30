@@ -15,6 +15,129 @@ Problemas encontrados durante el desarrollo y sus soluciones. Útil como referen
 | El LLM "inventa" un acta sin audio | Se llamaba al LLM con transcripción vacía | Guard: si no hay texto transcrito, no invocar el LLM; marcar `transcripcion: vacia` |
 | Diarización detecta hablantes de más | pyannote sobreestima con ruido | Asignación por suma de solapamiento + `ACTAS_MAX_SPEAKERS` configurable |
 
+## El servidor arranca pero /transcribe devuelve 500
+
+Síntoma típico: `/health` responde `{"status":"ok"}`, el cliente elige ese servidor como
+bueno, y cada trabajo falla con
+`Server error '500 Internal Server Error' for url '.../transcribe'`. La cola entra en un
+bucle de reintentos y las grabaciones se acumulan sin procesar.
+
+**Por qué el health check engaña.** `/health` solo confirma que el proceso HTTP está vivo.
+Los modelos pesados (`torch`, faster-whisper, pyannote) se importan de forma perezosa
+**dentro** de la petición de transcripción. Si uno de esos imports falla, el servidor
+levanta igual y sigue anunciándose como sano.
+
+**Diagnóstico rápido.** Pregúntale al propio servidor:
+
+```powershell
+curl "http://127.0.0.1:8770/health?deep=1"
+```
+
+A diferencia del `/health` normal, esta variante importa las dependencias pesadas y
+consulta Ollama. Si devuelve `degraded`, el campo `checks` dice exactamente qué falla.
+
+**Causa más frecuente: fallo de reserva de memoria de las librerías de álgebra.** Al cargar
+el modelo se reservan buffers por cada hilo. En equipos con muchos núcleos, o con la
+memoria del sistema comprometida por otras cargas, esa reserva falla y aborta la operación
+con alguno de estos mensajes:
+
+```
+OpenBLAS error: Memory allocation still failed after 10 retries, giving up.
+RuntimeError: mkl_malloc: failed to allocate memory
+```
+
+El primero viene de `torch` y el segundo de CTranslate2, el motor de faster-whisper.
+
+Engaña porque **no es falta de RAM libre**: ocurre con decenas de GB disponibles. Lo que se
+agota es la *memoria comprometible* del sistema (RAM más archivo de paginación).
+
+El servidor ya limita esos hilos a 8 al arrancar, así que este fallo no deberías verlo por
+el número de núcleos. Si aun así aparece:
+
+1. **Comprueba la memoria comprometida del sistema**, no la RAM libre. En Windows es la
+   línea "Confirmación" del Administrador de tareas. Si está cerca del límite, cierra
+   aplicaciones pesadas (máquinas virtuales, emuladores, navegadores con muchas pestañas) o
+   amplía el archivo de paginación.
+2. **Baja más el límite de hilos** antes de arrancar el servidor:
+
+   ```powershell
+   $env:OPENBLAS_NUM_THREADS = "2"; $env:OMP_NUM_THREADS = "2"; $env:MKL_NUM_THREADS = "2"
+   ```
+3. **Usa un modelo más pequeño** para descartar que sea puro tamaño:
+   `ACTAS_WHISPER_MODEL=medium` o `tiny`.
+
+Verifica el import a mano con el intérprete del venv del servidor:
+
+```powershell
+.\.venv\Scripts\python -c "import torch, faster_whisper; print(torch.cuda.is_available())"
+```
+
+**Otras causas del mismo 500**, si el import de `torch` funciona:
+
+| Causa | Cómo se reconoce |
+|---|---|
+| Faltan las librerías CUDA de runtime | Error mencionando `libcublas` o `cudnn` |
+| Ollama no responde y el audio sí tiene voz | `curl http://127.0.0.1:11434/api/tags` no contesta |
+
+### Lo que NO produce un 500
+
+Que el modelo de `ACTAS_OLLAMA_MODEL` no esté descargado **no** rompe la petición: el fallo
+del resumen está capturado, así que el acta se devuelve con la transcripción y el
+frontmatter marcado `resumen: pendiente`. Si ves ese marcador, revisa `ollama list` y que
+el nombre coincida exactamente. Lo mismo ocurre con la diarización sin `ACTAS_HF_TOKEN`:
+degrada a "sin hablantes", no falla.
+
+### Nota sobre los procesos del servidor
+
+En Windows puedes ver **dos** procesos de Python para un solo servidor. Ocurre cuando el
+`python.exe` del `.venv` es un redirector que lanza el intérprete base con el entorno del
+venv (típico si el Python base viene de la Microsoft Store); con un venv de un Python de
+python.org normalmente hay un único proceso. Si te pasa, son padre e hijo: que la línea de
+comandos muestre la ruta del Python del sistema **no** significa que el servidor esté
+corriendo fuera del venv.
+
+## El contenedor no ve la GPU
+
+Síntoma: `/health?deep=1` devuelve `"device":"cpu"` en una máquina con GPU NVIDIA, y la
+transcripción tarda muchísimo. Como `auto` cae a CPU sin fallar, es un problema silencioso.
+
+Comprueba por capas, de fuera hacia dentro:
+
+```bash
+# 1. El host ve la GPU
+nvidia-smi
+
+# 2. El NVIDIA Container Toolkit pasa el driver al contenedor
+docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+
+# 3. El runtime de CUDA inicializa dentro de la imagen
+docker run --rm --gpus all estela/actas-server \
+  python -c "import torch; print(torch.cuda.is_available())"
+```
+
+Si falla el paso 2, falta el
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+
+Si el paso 2 pasa pero el 3 falla con un error así:
+
+```
+CUDA initialization: Unexpected error from cudaGetDeviceCount().
+Error 500: named symbol not found
+```
+
+el driver llega al contenedor pero el runtime de CUDA no puede inicializarse. Comprobado en
+un host Windows con WSL2, driver 610.47 y Docker Desktop 24.0.7: `nvidia-smi` funciona
+dentro del contenedor, pero `torch` no inicializa **ni con CUDA 12.4 ni con 12.6**, mientras
+que el mismo torch sí usa la GPU de forma nativa en ese equipo. Descartado que sea mezcla de
+versiones de `nvidia-cublas`/`cudnn` o el `LD_LIBRARY_PATH` de la imagen.
+
+Qué hacer:
+
+- **Actualiza Docker Desktop** (24.0.7 es de 2023 y bastante anterior a los drivers
+  actuales). Es la causa más probable.
+- Mientras tanto, en ese equipo usa el servidor **sin contenedor**, en el venv, donde la GPU
+  sí funciona. En Linux con `nvidia-container-toolkit` al día este problema no aparece.
+
 ## Cliente (captura / app)
 
 | Síntoma | Causa | Solución |
@@ -33,7 +156,7 @@ Problemas encontrados durante el desarrollo y sus soluciones. Útil como referen
 1. **¿El audio se capturó?** Revisa el `.mka` antes de que se borre, o el log del cliente.
 2. **¿El servidor responde?** `curl http://<host>:8770/health`.
 3. **¿Qué dice el log?**
-   - Cliente: `<dir-datos>/Estela/actas.log`
+   - Cliente: `%APPDATA%\Actas\actas.log` en Windows
    - Servidor: `journalctl -u actas-server`
 4. **¿Transcripción vacía?** Verifica el nivel de audio (ganancia) y que la salida grabada
    sea por donde realmente suena.

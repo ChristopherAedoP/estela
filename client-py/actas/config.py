@@ -39,8 +39,21 @@ class Config:
     configuración real (servidor, vault, OBS, etc.) la introduce el usuario desde
     la ventana de Ajustes; se persiste en `config.json` del directorio de datos.
     """
-    # Servidor de transcripción (FastAPI). Configurar en Ajustes.
+    # Servidor de transcripción primario (FastAPI). Configurar en Ajustes.
+    # Cascada de resolución: primario -> (encender VM) -> local -> (arrancar local).
     server_url: str = "http://localhost:8770"
+    # Servidor local de respaldo. Si el primario no responde, se usa este.
+    local_server_url: str = "http://localhost:8770"
+    # Arrancar el servidor local (Ollama + actas-server) automáticamente cuando el
+    # primario no responde y el local tampoco está corriendo.
+    auto_start_local: bool = False
+    # Rutas para arrancar el servidor local (solo se usan si auto_start_local=True).
+    # Directorio del server (contiene .venv, .env y el paquete app).
+    local_server_dir: str = ""
+    # Python del venv del server local (por defecto: <local_server_dir>/.venv).
+    local_server_python: str = ""
+    # URL de Ollama local (se arranca si no responde antes del server local).
+    local_ollama_url: str = "http://127.0.0.1:11434"
     # Vault Obsidian (destino de las notas). Vacío => configurar en Ajustes.
     vault_path: str = ""
     # Carpeta donde guardar las actas. Si es relativa, se resuelve dentro del vault.
@@ -52,14 +65,19 @@ class Config:
     # OBS (obs-websocket). El password se genera en OBS y se pone en Ajustes.
     obs_url: str = "ws://127.0.0.1:4455"
     obs_password: str = ""
-    obs_exe: str = r"C:\Program Files\obs-studio\bin\64bit\obs64.exe"
+    # Vacio = se busca OBS en el PATH y en las rutas habituales de la plataforma
+    # (ver infra.resolve_obs_exe). Cablear aqui una ruta de Windows dejaba el
+    # cliente inservible en cualquier otro sistema y en instalaciones portables.
+    obs_exe: str = ""
     obs_input_name: str = "Audio Escritorio (Actas)"
     audio_device_id: str = "default"  # device_id de la salida a grabar
     audio_device_label: str = "Por defecto"
     # Ganancia de audio en dB aplicada a la captura (las salidas HDMI/NVIDIA, como
     # los parlantes de un monitor, se capturan a nivel muy bajo; +20dB lo compensa)
     audio_gain_db: float = 20.0
-    # Carpeta donde OBS guarda las grabaciones
+    # Carpeta donde OBS guarda las grabaciones. La ruta real la decide el perfil
+    # de OBS y la devuelve stop_record(); este campo se conserva por
+    # compatibilidad con configuraciones existentes, pero no lo lee nadie.
     recordings_dir: str = str(Path.home() / "Videos" / "estela-rec")
     # Comportamiento
     ask_title: bool = True

@@ -1,0 +1,63 @@
+# Despliegue del servidor de Estela con Docker.
+#
+#   docker compose up                  -> servidor + Ollama incluido
+#   docker compose up actas-server     -> solo el servidor, contra un Ollama que
+#                                         ya tengas corriendo
+#
+# La segunda forma es la util cuando la maquina ya ejecuta Ollama para otra cosa:
+# levantar un segundo Ollama haria que ambos compitieran por la misma VRAM. En
+# ese caso hay que apuntar ACTAS_OLLAMA_URL al que ya existe, por ejemplo
+# http://host.docker.internal:11434 (Docker Desktop) o la IP del host en Linux.
+#
+# Requiere el NVIDIA Container Toolkit en el host para que los contenedores vean
+# la GPU. Sin el, quita los bloques `deploy:` y el servidor caera solo a CPU.
+
+services:
+  actas-server:
+    build: ./server
+    image: estela/actas-server:latest
+    restart: unless-stopped
+    ports:
+      - "8770:8770"
+    environment:
+      ACTAS_OLLAMA_URL: ${ACTAS_OLLAMA_URL:-http://ollama:11434}
+      ACTAS_OLLAMA_MODEL: ${ACTAS_OLLAMA_MODEL:-gemma4:12b-it-qat}
+      ACTAS_WHISPER_MODEL: ${ACTAS_WHISPER_MODEL:-large-v3}
+      # auto: CUDA si el contenedor ve la GPU, CPU en caso contrario.
+      ACTAS_WHISPER_DEVICE: ${ACTAS_WHISPER_DEVICE:-auto}
+      ACTAS_WHISPER_COMPUTE: ${ACTAS_WHISPER_COMPUTE:-auto}
+      ACTAS_LANGUAGE: ${ACTAS_LANGUAGE:-es}
+      # Vacio = sin diarizacion. El pipeline no falla, solo no separa hablantes.
+      ACTAS_HF_TOKEN: ${ACTAS_HF_TOKEN:-}
+      ACTAS_MIN_SPEAKERS: ${ACTAS_MIN_SPEAKERS:-}
+      ACTAS_MAX_SPEAKERS: ${ACTAS_MAX_SPEAKERS:-}
+    volumes:
+      - actas-audio:/data/audio
+      - actas-models:/data/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  actas-audio:
+  actas-models:
+  ollama-models:

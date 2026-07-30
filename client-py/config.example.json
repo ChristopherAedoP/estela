@@ -1,9 +1,15 @@
 {
-  "_comment": "Ejemplo de configuración del cliente. Copia los valores que necesites a tu config real (se edita desde la ventana de Ajustes o en %APPDATA%/Estela/config.json en Windows). NO pongas datos reales en este archivo de ejemplo.",
+  "_comment": "Ejemplo de configuración del cliente. Copia los valores que necesites a tu config real (se edita desde la ventana de Ajustes o en %APPDATA%/Actas/config.json en Windows). NO pongas datos reales en este archivo de ejemplo.",
 
   "server_url": "http://<host-del-servidor>:8770",
   "vault_path": "<ruta-a-tu-vault-obsidian>",
   "actas_dir": "Actas",
+
+  "local_server_url": "http://localhost:8770",
+  "auto_start_local": false,
+  "local_server_dir": "<carpeta-del-server-local-con-venv-y-env-o-vacio>",
+  "local_server_python": "",
+  "local_ollama_url": "http://127.0.0.1:11434",
 
   "proxmox_host": "<host-proxmox-o-vacio>",
   "vm_id": "<id-de-la-vm-o-vacio>",
@@ -11,7 +17,7 @@
 
   "obs_url": "ws://127.0.0.1:4455",
   "obs_password": "<password-del-websocket-de-obs>",
-  "obs_exe": "C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe",
+  "obs_exe": "",
   "obs_input_name": "Audio Escritorio (Actas)",
   "audio_device_id": "default",
   "audio_device_label": "Por defecto",

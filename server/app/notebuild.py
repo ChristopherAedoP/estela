@@ -9,6 +9,17 @@ def seconds_to_hms(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
+def _yaml_str(value: str) -> str:
+    """Escalar YAML entre comillas simples.
+
+    Sin comillas, un titulo con ': ' o una ruta con ':' rompen el frontmatter y
+    Obsidian deja de leer las propiedades de la nota. Se usan comillas simples y
+    no dobles porque las rutas de Windows llevan barras invertidas, que YAML
+    interpretaria como secuencias de escape dentro de comillas dobles.
+    """
+    return "'" + str(value).replace("'", "''") + "'"
+
+
 def _transcript_block(lines: list[TranscriptLine]) -> str:
     rows = []
     for ln in lines:
@@ -29,10 +40,10 @@ def build_markdown(
 ) -> str:
     fm = (
         "---\n"
-        f"title: {title}\n"
+        f"title: {_yaml_str(title)}\n"
         f"date: {date}\n"
         "tags: [acta, reunion, transcripcion]\n"
-        f"audio: {audio_path}\n"
+        f"audio: {_yaml_str(audio_path)}\n"
         f"duracion: {seconds_to_hms(duration_sec)}\n"
         f"hablantes: {speakers}\n"
         "---\n\n"

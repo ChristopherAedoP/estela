@@ -47,8 +47,68 @@ class SettingsWindow(QDialog):
         )
         form.addRow("Ganancia de audio:", self.gain_spin)
 
+        # --- OBS ---
+        # Sin estos campos, la contraseña del WebSocket solo se podía poner
+        # editando config.json a mano, lo que bloquea la primera grabación.
+        self.obs_url_edit = QLineEdit(self.cfg.obs_url)
+        self.obs_url_edit.setPlaceholderText("ws://127.0.0.1:4455")
+        self.obs_url_edit.setToolTip("WebSocket de OBS. Por defecto ws://127.0.0.1:4455")
+        form.addRow("OBS WebSocket:", self.obs_url_edit)
+
+        self.obs_pass_edit = QLineEdit(self.cfg.obs_password)
+        self.obs_pass_edit.setEchoMode(QLineEdit.Password)
+        self.obs_pass_edit.setToolTip(
+            "Contraseña del WebSocket de OBS.\n"
+            "OBS → Herramientas → Configuración de WebSocket Server → Mostrar información."
+        )
+        form.addRow("OBS contraseña:", self.obs_pass_edit)
+
+        self.obs_exe_edit = QLineEdit(self.cfg.obs_exe)
+        self.obs_exe_edit.setPlaceholderText(
+            "Vacío = buscar OBS en el PATH del sistema"
+        )
+        obs_exe_browse = QPushButton("Examinar…")
+        obs_exe_browse.clicked.connect(self._browse_obs_exe)
+        obs_exe_row = QHBoxLayout()
+        obs_exe_row.addWidget(self.obs_exe_edit, 1)
+        obs_exe_row.addWidget(obs_exe_browse)
+        obs_exe_widget = QWidget(); obs_exe_widget.setLayout(obs_exe_row)
+        form.addRow("Ejecutable de OBS:", obs_exe_widget)
+
+        self.obs_input_edit = QLineEdit(self.cfg.obs_input_name)
+        self.obs_input_edit.setToolTip(
+            "Nombre de la fuente de audio dentro de la escena de OBS.\n"
+            "Debe coincidir exactamente con el de tu escena."
+        )
+        form.addRow("Fuente de audio (OBS):", self.obs_input_edit)
+
         self.server_edit = QLineEdit(self.cfg.server_url)
+        self.server_edit.setToolTip("Servidor principal (p. ej. el del NAS).")
         form.addRow("Servidor:", self.server_edit)
+
+        self.local_server_edit = QLineEdit(self.cfg.local_server_url)
+        self.local_server_edit.setToolTip(
+            "Servidor local de respaldo. Se usa si el principal no responde."
+        )
+        form.addRow("Servidor local:", self.local_server_edit)
+
+        self.auto_local_chk = QCheckBox(
+            "Arrancar el servidor local automáticamente si el principal no responde"
+        )
+        self.auto_local_chk.setChecked(self.cfg.auto_start_local)
+        form.addRow("", self.auto_local_chk)
+
+        self.local_dir_edit = QLineEdit(self.cfg.local_server_dir)
+        self.local_dir_edit.setPlaceholderText(
+            "Ej: ruta a la carpeta server/ del repo (contiene .venv y .env)"
+        )
+        local_dir_browse = QPushButton("Examinar…")
+        local_dir_browse.clicked.connect(self._browse_local_dir)
+        local_dir_row = QHBoxLayout()
+        local_dir_row.addWidget(self.local_dir_edit, 1)
+        local_dir_row.addWidget(local_dir_browse)
+        local_dir_widget = QWidget(); local_dir_widget.setLayout(local_dir_row)
+        form.addRow("Carpeta server local:", local_dir_widget)
 
         self.vault_edit = QLineEdit(self.cfg.vault_path)
         vault_browse = QPushButton("Examinar…")
@@ -152,6 +212,21 @@ class SettingsWindow(QDialog):
             log.exception("error detectando salidas")
             self.status_lbl.setText(f"Error detectando salidas: {e}")
 
+    def _browse_local_dir(self):
+        start = self.local_dir_edit.text() or str(Path.home())
+        d = QFileDialog.getExistingDirectory(
+            self, "Elegir carpeta del server local", start
+        )
+        if d:
+            self.local_dir_edit.setText(d)
+
+    def _browse_obs_exe(self):
+        f, _ = QFileDialog.getOpenFileName(
+            self, "Elegir el ejecutable de OBS", self.obs_exe_edit.text() or str(Path.home())
+        )
+        if f:
+            self.obs_exe_edit.setText(f)
+
     def _browse_vault(self):
         d = QFileDialog.getExistingDirectory(
             self, "Elegir carpeta del vault", self.vault_edit.text() or str(Path.home())
@@ -171,17 +246,28 @@ class SettingsWindow(QDialog):
                 self.actas_edit.setText(d)
 
     def _test_server(self):
-        self.cfg.server_url = self.server_edit.text().strip()
-        if infra.server_healthy(self.cfg):
-            self.status_lbl.setText("Servidor OK")
+        primary = self.server_edit.text().strip()
+        local = self.local_server_edit.text().strip()
+        if infra.url_healthy(primary):
+            self.status_lbl.setText("Servidor principal OK")
+        elif infra.url_healthy(local):
+            self.status_lbl.setText(
+                "El principal no responde; el servidor local SÍ responde."
+            )
         else:
-            self.status_lbl.setText("El servidor no responde (¿VM apagada?).")
+            self.status_lbl.setText(
+                "Ni el principal ni el local responden. "
+                "Con arranque automático, el local se levantará al grabar."
+            )
 
     def _save(self):
         from .log import get_logger
         log = get_logger()
         try:
             self.cfg.server_url = self.server_edit.text().strip()
+            self.cfg.local_server_url = self.local_server_edit.text().strip()
+            self.cfg.auto_start_local = self.auto_local_chk.isChecked()
+            self.cfg.local_server_dir = self.local_dir_edit.text().strip()
             self.cfg.vault_path = self.vault_edit.text().strip()
             self.cfg.actas_dir = self.actas_edit.text().strip()
             self.cfg.proxmox_host = self.proxmox_edit.text().strip()
@@ -193,6 +279,10 @@ class SettingsWindow(QDialog):
             self.cfg.audio_device_id = self.device_combo.currentData() or "default"
             self.cfg.audio_device_label = self.device_combo.currentText()
             self.cfg.audio_gain_db = self.gain_spin.value()
+            self.cfg.obs_url = self.obs_url_edit.text().strip() or "ws://127.0.0.1:4455"
+            self.cfg.obs_password = self.obs_pass_edit.text()
+            self.cfg.obs_exe = self.obs_exe_edit.text().strip()
+            self.cfg.obs_input_name = self.obs_input_edit.text().strip()
             self.cfg.save()
             log.info("ajustes guardados")
         except Exception as e:

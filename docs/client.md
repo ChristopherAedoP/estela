@@ -22,19 +22,49 @@ libre para grabar otra al instante. La cola procesa 1 a 1 en background.
 La app controla OBS por WebSocket (obs-websocket v5). OBS graba **solo-audio** (.mka) de la
 salida elegida. Config de OBS de ejemplo en `client-py/obs-config/` (perfil + escena).
 
+Todo se configura desde **Ajustes**, sin tocar archivos: URL del WebSocket, contraseña,
+ejecutable de OBS y nombre de la fuente de audio. La contraseña se obtiene en
+OBS → Herramientas → Configuración de WebSocket Server.
+
+El **ejecutable** se deja vacío por defecto: la app busca OBS en el `PATH` y en las rutas
+de instalación habituales de cada plataforma. Solo hay que rellenarlo si usas una
+instalación portable o en una ubicación no estándar.
+
 - **Elegir salida**: Ajustes → "Detectar salidas" → seleccionar.
 - **Ganancia**: las salidas HDMI/NVIDIA (parlantes de monitor) se capturan muy bajo; subir
   la "Ganancia de audio" a ~20 dB. No baja la calidad de transcripción (Whisper usa 16kHz).
 - La escena debe tener **solo** la fuente de audio (no agregar captura de video).
+
+## Servidor: primario (NAS) con respaldo local
+
+El cliente resuelve qué servidor usar en cada trabajo con una cascada
+(`infra.resolve_server`):
+
+1. **Servidor primario** (`server_url`, p. ej. la VM del NAS) si responde `/health`.
+2. Si `auto_start_vm`: **encender la VM** por SSH y esperar a que responda.
+3. **Servidor local** (`local_server_url`, `http://localhost:8770`) si responde.
+4. Si `auto_start_local`: **arrancar Ollama + actas-server local** y usarlo.
+
+Antes de dar por bueno un candidato se comprueba con `/health?deep=1` que además **puede
+transcribir**. Un servidor con la pila de modelos rota responde `ok` al `/health` normal, y
+sin esa comprobación el cliente lo elegía una y otra vez para acabar fallando con 500 en
+cada trabajo. Un servidor antiguo que no conozca ese parámetro se sigue considerando válido.
+
+El primer servidor disponible procesa el trabajo. Así la grabación se transcribe contra el
+NAS cuando está encendido y contra el PC local cuando no, sin cambiar la configuración.
+
+Para el arranque local, `local_server_dir` apunta a la carpeta del server (con `.venv` y
+`.env`); Ollama se levanta si `local_ollama_url` no responde.
 
 ## Configuración
 
 Defaults neutros en el código; la config real se edita en **Ajustes** y se guarda en el
 directorio de datos del usuario (`config.json`), fuera de git. Ver `config.example.json`.
 
-Campos: servidor, vault, carpeta de actas, host/VM para encendido automático, OBS
-(url/password/exe/fuente), dispositivo de audio, ganancia, carpeta de grabaciones, título
-por defecto, borrar local tras subir.
+Campos: servidor primario, servidor local + arranque automático + carpeta del server local,
+vault, carpeta de actas, host/VM para encendido automático, OBS (url/password/exe/fuente),
+dispositivo de audio, ganancia, carpeta de grabaciones, título por defecto, borrar local
+tras subir.
 
 Datos de la app (directorio de datos del usuario): `config.json`, `queue.json` (cola
 persistente), `actas.log`.
@@ -51,7 +81,7 @@ persistente), `actas.log`.
 ```powershell
 cd client-py
 python -m venv .venv
-.\.venv\Scripts\pip install -r requirements.txt pyinstaller
+.\.venv\Scripts\pip install -r requirements.txt -r requirements-dev.txt
 pwsh -File build.ps1     # genera dist\Estela.exe
 ```
 

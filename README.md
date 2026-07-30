@@ -42,37 +42,63 @@ Detalle completo y diagramas C4 en [`docs/architecture.md`](docs/architecture.md
 | Parte | Tecnología | Ubicación |
 |-------|-----------|-----------|
 | **Cliente** | Python 3 + PySide6 (app de bandeja) | [`client-py/`](client-py/) → `Estela.exe` |
-| **Servidor** | FastAPI + faster-whisper + pyannote + Ollama | [`server/`](server/) → `/opt/actas-server` (VM 120) |
-| **Despliegue** | `deploy.ps1` (scp a la VM) | raíz |
+| **Servidor** | FastAPI + faster-whisper + pyannote + Ollama | [`server/`](server/) — en el mismo PC o en una máquina con GPU |
+| **Despliegue** | `deploy.ps1` (scp a un servidor remoto) | raíz |
 
 > Nota: el identificador técnico interno del servicio sigue siendo `actas`
 > (`actas-server`, paquete `actas`, variables `ACTAS_*`). "Estela" es el nombre del
 > producto. Ver [`docs/decisions.md`](docs/decisions.md).
 
+## Requisitos
+
+- **GPU NVIDIA con CUDA 12.x.** El servidor viene configurado para `cuda`; en CPU funciona
+  pero la transcripción se vuelve muy lenta.
+- **Python 3.12**, [Ollama](https://ollama.com/download) y, en la máquina donde grabes,
+  [OBS Studio](https://obsproject.com/).
+- Unos 15 GB de disco para los modelos.
+
+Puedes correrlo **todo en un PC** o separar el cliente del servidor en dos máquinas.
+
 ## Quickstart
 
-### Cliente (Windows)
+**Servidor con Docker** (lo más corto; requiere NVIDIA Container Toolkit):
+
+```bash
+docker compose up                 # servidor + Ollama
+docker compose exec ollama ollama pull gemma4:12b-it-qat
+```
+
+**Servidor sin Docker:**
+
 ```powershell
-# Requisitos (una vez)
-winget install OBSProject.OBSStudio AutoHotkey.AutoHotkey
-# Compilar
+cd server
+python -m venv .venv
+.\.venv\Scripts\pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+.\.venv\Scripts\pip install ".[gpu]"
+ollama pull gemma4:12b-it-qat
+```
+
+**Cliente (Windows):**
+
+```powershell
 cd client-py
 python -m venv .venv
-.\.venv\Scripts\pip install -r requirements.txt pyinstaller
-pwsh -File build.ps1          # genera dist\Estela.exe
+.\.venv\Scripts\pip install -r requirements.txt -r requirements-dev.txt
+pwsh -File build.ps1              # genera dist\Estela.exe
 ```
-Ejecuta `Estela.exe`, abre **Ajustes** → elige la salida de audio a grabar y la ganancia,
-y usa **Ctrl+Alt+R** para grabar.
 
-### Servidor (VM 120)
-```powershell
-pwsh -File deploy.ps1         # sincroniza server/ -> /opt/actas-server
-```
-Ver [`docs/server.md`](docs/server.md) para la instalación completa (modelos, CUDA, systemd).
+Ejecuta `Estela.exe`, abre **Ajustes** → apunta al servidor, elige el vault, la salida de
+audio y la ganancia, y usa **Ctrl+Alt+R** para grabar.
+
+Este resumen omite pasos que importan (OBS, token de Hugging Face para los hablantes, cómo
+exportar el `.env`, cómo verificar que la GPU se ve). Para una puesta en marcha completa
+sigue **[`docs/getting-started.md`](docs/getting-started.md)**.
 
 ## Documentación
 
+- [`docs/getting-started.md`](docs/getting-started.md) — **Empieza aquí.** Puesta en marcha desde cero.
 - [`docs/architecture.md`](docs/architecture.md) — Diagramas C4 + flujo.
+- [`docs/configuration.md`](docs/configuration.md) — Variables del servidor, config del cliente, secretos.
 - [`docs/server.md`](docs/server.md) — Pipeline, modelos, VRAM, deploy, tests.
 - [`docs/client.md`](docs/client.md) — App de bandeja, OBS, ganancia, cola.
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) — Problemas resueltos y sus fixes.
@@ -87,4 +113,17 @@ pyannote.audio · Ollama (gemma4:12b) · CUDA 12.x · Obsidian
 
 ## Estado
 
-**Funcional.** En uso. Proyecto personal de homelab. Privado.
+**Funcional.** En uso. Proyecto personal de homelab.
+
+## Licencia
+
+[MIT](LICENSE). Se distribuye tal cual, sin garantía.
+
+El audio y las actas que genera Estela **no salen de tu infraestructura**, pero eso depende
+de cómo lo despliegues. Antes de compartir tu instalación o el repositorio, revisa qué
+archivos contienen secretos en
+[`docs/configuration.md`](docs/configuration.md#antes-de-compartir-el-repositorio).
+
+Dos dependencias tienen licencia propia que debes aceptar por tu cuenta:
+`pyannote/speaker-diarization-3.1` (requiere aceptar sus condiciones en Hugging Face) y el
+modelo de Ollama que elijas para el resumen.
