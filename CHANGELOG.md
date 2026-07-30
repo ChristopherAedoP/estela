@@ -50,7 +50,6 @@ acta en el vault, con app de bandeja y procesamiento en cola.
 - ~28 tests unitarios (pytest).
 
 ### Infraestructura
-- Repo git en `H:\Desarrollo` (versiona solo el proyecto).
 - Almacenamiento del audio via NFS montado en el servidor (configurable por `ACTAS_AUDIO_DIR`).
 - Config de OBS versionada (`client-py/obs-config/`).
 

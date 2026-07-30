@@ -59,7 +59,7 @@ def test_vm_arranca_y_primario_queda_healthy(monkeypatch):
     monkeypatch.setattr(infra, "url_healthy", lambda url, timeout=4.0: False)
     monkeypatch.setattr(infra, "start_vm", lambda cfg: (True, "VM encendida"))
     monkeypatch.setattr(infra, "wait_server", lambda cfg, wait_s=200: True)
-    cfg = _cfg(auto_start_vm=True, proxmox_host="192.168.2.120", vm_id="120")
+    cfg = _cfg(auto_start_vm=True, proxmox_host="proxmox-host.example", vm_id="120")
     assert infra.resolve_server(cfg) == "http://nas:8770"
 
 
@@ -69,7 +69,7 @@ def test_vm_falla_cae_a_local(monkeypatch):
         infra, "url_healthy", lambda url, timeout=4.0: url == "http://localhost:8770"
     )
     monkeypatch.setattr(infra, "start_vm", lambda cfg: (False, "ssh timeout"))
-    cfg = _cfg(auto_start_vm=True, proxmox_host="192.168.2.120", vm_id="120")
+    cfg = _cfg(auto_start_vm=True, proxmox_host="proxmox-host.example", vm_id="120")
     assert infra.resolve_server(cfg) == "http://localhost:8770"
 
 

@@ -22,11 +22,15 @@ livianos.
 
 ## 3. LLM para el resumen: gemma4:12b (no qwen3)
 
-**Decisión:** `gemma4:12b-it-qat` como modelo de resumen por defecto; `qwen3:8b` como
-fallback.
+**Decisión:** `gemma4:12b-it-qat` como modelo de resumen por defecto.
 
-**Razón:** mejor prosa en español y mejor inferencia de responsables/tareas. Se usa el
-parámetro nativo `think:false` de Ollama (compatible con ambos).
+**Razón:** mejor prosa en español y mejor inferencia de responsables/tareas que `qwen3:8b`,
+que era el modelo anterior. Se usa el parámetro nativo `think:false` de Ollama (compatible
+con ambos).
+
+**Estado de la implementación:** no hay fallback de modelo. `summarize.py` llama únicamente
+al modelo de `ACTAS_OLLAMA_MODEL`; si falla, el acta se genera igual con la transcripción y
+se marca `resumen: pendiente`. Cambiar de modelo es solo cambiar esa variable.
 
 ## 4. NO usar gemma-3n para transcribir (descartado)
 

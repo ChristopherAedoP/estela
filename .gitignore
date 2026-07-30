@@ -19,5 +19,7 @@ client-py/*.spec
 # Datos de la app / grabaciones
 *.wav
 *.mka
-**/*.lock
 **/session.wav
+
+# Nota: los lockfiles de dependencias (uv.lock, poetry.lock) SI se versionan.
+# Son la garantia de que dos personas instalen exactamente lo mismo.

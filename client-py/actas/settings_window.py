@@ -65,7 +65,7 @@ class SettingsWindow(QDialog):
 
         self.local_dir_edit = QLineEdit(self.cfg.local_server_dir)
         self.local_dir_edit.setPlaceholderText(
-            r"Ej: H:\Desarrollo\estela\server  (contiene .venv y .env)"
+            "Ej: ruta a la carpeta server/ del repo (contiene .venv y .env)"
         )
         local_dir_browse = QPushButton("Examinar…")
         local_dir_browse.clicked.connect(self._browse_local_dir)

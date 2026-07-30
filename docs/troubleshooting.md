@@ -15,6 +15,80 @@ Problemas encontrados durante el desarrollo y sus soluciones. Útil como referen
 | El LLM "inventa" un acta sin audio | Se llamaba al LLM con transcripción vacía | Guard: si no hay texto transcrito, no invocar el LLM; marcar `transcripcion: vacia` |
 | Diarización detecta hablantes de más | pyannote sobreestima con ruido | Asignación por suma de solapamiento + `ACTAS_MAX_SPEAKERS` configurable |
 
+## El servidor arranca pero /transcribe devuelve 500
+
+Síntoma típico: `/health` responde `{"status":"ok"}`, el cliente elige ese servidor como
+bueno, y cada trabajo falla con
+`Server error '500 Internal Server Error' for url '.../transcribe'`. La cola entra en un
+bucle de reintentos y las grabaciones se acumulan sin procesar.
+
+**Por qué el health check engaña.** `/health` solo confirma que el proceso HTTP está vivo.
+Los modelos pesados (`torch`, faster-whisper, pyannote) se importan de forma perezosa
+**dentro** de la petición de transcripción. Si uno de esos imports falla, el servidor
+levanta igual y sigue anunciándose como sano.
+
+**Causa más frecuente: OpenBLAS.** Al importar `torch`, OpenBLAS reserva buffers por cada
+hilo. En equipos con muchos núcleos, o con la memoria comprometida por otras cargas, esa
+reserva falla y aborta el proceso:
+
+```
+OpenBLAS error: Memory allocation still failed after 10 retries, giving up.
+```
+
+Engaña porque **no es falta de RAM libre**: puede pasar con decenas de GB disponibles, ya
+que lo que se agota es la reserva por hilo, no la memoria física.
+
+Diagnóstico — ejecuta el import a mano con el intérprete del venv del servidor:
+
+```powershell
+.\.venv\Scripts\python -c "import torch, faster_whisper; print(torch.cuda.is_available())"
+```
+
+Si imprime `True`, el problema es otro. Si aborta con el error de OpenBLAS, limita los
+hilos:
+
+```powershell
+$env:OPENBLAS_NUM_THREADS = "8"
+```
+
+Y vuelve a probar. Valores de 8 o menos resuelven el fallo. No se ha medido el impacto en
+rendimiento, pero se espera que sea menor, porque el trabajo pesado de Estela ocurre en la
+GPU y en Ollama, no en BLAS.
+
+Para que sea permanente y lo hereden los procesos lanzados por el cliente:
+
+```powershell
+[Environment]::SetEnvironmentVariable('OPENBLAS_NUM_THREADS','8','User')
+```
+
+Después hay que **reiniciar el cliente**, porque el servidor local se lanza como proceso
+hijo suyo y hereda su entorno. Ojo: `server/.env` no sirve para esto, ya que el cliente
+solo propaga las variables con prefijo `ACTAS_`.
+
+**Otras causas del mismo 500**, si el import de `torch` funciona:
+
+| Causa | Cómo se reconoce |
+|---|---|
+| Faltan las librerías CUDA de runtime | Error mencionando `libcublas` o `cudnn` |
+| Ollama no responde y el audio sí tiene voz | `curl http://127.0.0.1:11434/api/tags` no contesta |
+
+### Lo que NO produce un 500
+
+Que el modelo de `ACTAS_OLLAMA_MODEL` no esté descargado **no** rompe la petición: el fallo
+del resumen está capturado, así que el acta se devuelve con la transcripción y el
+frontmatter marcado `resumen: pendiente`. Si ves ese marcador, revisa `ollama list` y que
+el nombre coincida exactamente. Lo mismo ocurre con la diarización sin `ACTAS_HF_TOKEN`:
+degrada a "sin hablantes", no falla.
+
+### Nota sobre los procesos del servidor
+
+En Windows puedes ver **dos** procesos de Python para un solo servidor. Ocurre cuando el
+`python.exe` del `.venv` es un redirector que lanza el intérprete base con el entorno del
+venv (típico si el Python base viene de la Microsoft Store); con un venv de un Python de
+python.org normalmente hay un único proceso. Si te pasa, son padre e hijo: que la línea de
+comandos muestre la ruta del Python del sistema **no** significa que el servidor esté
+corriendo fuera del venv.
+
 ## Cliente (captura / app)
 
 | Síntoma | Causa | Solución |
@@ -33,7 +107,7 @@ Problemas encontrados durante el desarrollo y sus soluciones. Útil como referen
 1. **¿El audio se capturó?** Revisa el `.mka` antes de que se borre, o el log del cliente.
 2. **¿El servidor responde?** `curl http://<host>:8770/health`.
 3. **¿Qué dice el log?**
-   - Cliente: `<dir-datos>/Estela/actas.log`
+   - Cliente: `%APPDATA%\Actas\actas.log` en Windows
    - Servidor: `journalctl -u actas-server`
 4. **¿Transcripción vacía?** Verifica el nivel de audio (ganancia) y que la salida grabada
    sea por donde realmente suena.

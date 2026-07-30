@@ -1,5 +1,5 @@
 {
-  "_comment": "Ejemplo de configuración del cliente. Copia los valores que necesites a tu config real (se edita desde la ventana de Ajustes o en %APPDATA%/Estela/config.json en Windows). NO pongas datos reales en este archivo de ejemplo.",
+  "_comment": "Ejemplo de configuración del cliente. Copia los valores que necesites a tu config real (se edita desde la ventana de Ajustes o en %APPDATA%/Actas/config.json en Windows). NO pongas datos reales en este archivo de ejemplo.",
 
   "server_url": "http://<host-del-servidor>:8770",
   "vault_path": "<ruta-a-tu-vault-obsidian>",
