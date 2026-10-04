@@ -1,5 +1,13 @@
 # Estela
 
+> [!WARNING]
+> **Proyecto deprecado desde el 2026-10-04.** No se usa ni se mantiene. El servidor
+> desplegado (`actas-server.service` en la VM de GPU) se dio de baja, junto con el audio
+> archivado y el cliente de bandeja. La version que corria en produccion corresponde al
+> commit `acfa966` (ruta de audio `/mnt/actas/audio` via `ACTAS_AUDIO_DIR`, modelo de Ollama
+> via `ACTAS_OLLAMA_MODEL` en `/etc/actas-server.env`). Para volver a desplegarlo, seguir las
+> instrucciones de este README desde `main`.
+
 [![CI](https://github.com/ChristopherAedoP/estela/actions/workflows/ci.yml/badge.svg)](https://github.com/ChristopherAedoP/estela/actions/workflows/ci.yml)
 
 > Graba lo que se dice, déjalo grabado en piedra.
